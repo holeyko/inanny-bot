@@ -1,0 +1,48 @@
+name: Docker Image CI
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-image:
+    runs-on: self-hosted
+    steps:
+    - uses: actions/checkout@v4
+    - name: Build the Docker image
+      run: docker build -t inanny-bot:${{ github.run_number }} .
+
+  stop-existing-container:
+    runs-on: self-hosted
+    needs: build-image
+    steps:
+    - name: Containers for remove
+      run: echo "REMOVE_CONTAINERS=$(docker ps -a --format '{{.ID}} {{.Image}}' | awk '/inanny-bot:.*/ {print $1}')" >> $GITHUB_ENV
+    - name: Stop existing container
+      run: docker stop ${{ env.REMOVE_CONTAINERS }} || true
+    - name: Remove existing container
+      run: docker rm ${{ env.REMOVE_CONTAINERS }} || true
+    - name: Remove previous images
+      run: |
+          IMAGE_NAME=inanny-bot
+          SPECIFIC_TAG=${{ github.run_number }}
+          IMAGES=$(docker images --format "{{.Repository}}:{{.Tag}}" | grep "$IMAGE_NAME")
+          echo $IMAGES
+          for IMAGE in $IMAGES; do
+            if [[ $IMAGE != *"$SPECIFIC_TAG" ]]; then
+              docker rmi $IMAGE || true
+            fi
+          done
+  
+  run-container:
+    runs-on: self-hosted
+    needs: stop-existing-container
+    steps:
+    - name: Run the Docker container
+      env:
+        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      run: |
+        docker run --rm -d \
+          -e TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }} \
+          inanny-bot:${{ github.run_number }}
