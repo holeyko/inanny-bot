@@ -1,0 +1,11 @@
+### GO ###
+build/
+
+
+### VSCode ###
+.vscode/
+.code/
+
+
+### IDEA ####
+.idea/
