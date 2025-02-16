@@ -60,6 +60,7 @@ func parseFlags(input string) ([]Flag, string, error) {
 
 	flagsString := strings.Split(input[1:closeFlagIndex], flagsDelimeter)
 	for _, flag := range flagsString {
+		flag = strings.TrimSpace(flag)
 		flags = append(flags, Flag(flag))
 	}
 

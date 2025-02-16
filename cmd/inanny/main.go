@@ -19,7 +19,6 @@ func main() {
 		log.Fatal(err)
 	}
 
-	bot.Debug = true
 	log.Println("Telegram bot Innany was started")
 	handeRequests(bot)
 }
