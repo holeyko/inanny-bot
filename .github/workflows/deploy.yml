@@ -43,6 +43,6 @@ jobs:
       env:
         TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       run: |
-        docker run --rm -d \
+        docker run -d \
           -e TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }} \
           inanny-bot:${{ github.run_number }}
