@@ -34,12 +34,20 @@ func handeRequests(bot *tgbot.BotAPI) {
 	updates := bot.GetUpdatesChan(buildUpdateConfig())
 
 	for update := range updates {
-		if update.Message != nil {
-			if command := update.Message.Command(); command != "" {
+		if message := update.Message; message != nil {
+			if command := message.Command(); command != "" {
 				if handler := commands.FindCommandHandler(command); handler != nil {
-					handler.Handle(bot, &update)
+					err := handler.Handle(bot, &update)
+					if err != nil {
+						sendErrorResponse(bot, message.Chat.ID)
+					}
 				}
 			}
 		}
 	}
+}
+
+func sendErrorResponse(bot *tgbot.BotAPI, chatId int64, err error) {
+	messageConfig := tgbot.NewMessage(chatId, err.Error())
+	bot.Send(messageConfig)
 }
