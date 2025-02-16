@@ -39,7 +39,7 @@ func handeRequests(bot *tgbot.BotAPI) {
 				if handler := commands.FindCommandHandler(command); handler != nil {
 					err := handler.Handle(bot, &update)
 					if err != nil {
-						sendErrorResponse(bot, message.Chat.ID)
+						sendErrorResponse(bot, message.Chat.ID, err)
 					}
 				}
 			}
