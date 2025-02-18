@@ -9,7 +9,7 @@ ADD go.sum .
 RUN go mod download
 COPY . .
 
-RUN go build -o /app/main cmd/inanny/main.go
+RUN go build -ldflags "-w -s" -o /app/main cmd/inanny/main.go 
 
 
 FROM alpine
