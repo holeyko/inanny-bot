@@ -31,10 +31,10 @@ build() {
 }
 
 clean() {
-    echo "Clean previous docker container"
+    echo "Clean previous docker container..."
 
-    docker stop inanny-bot
-    docker rm inanny-bot
+    docker stop inanny-bot >> /dev/null
+    docker rm inanny-bot >> /dev/null
 }
 
 case "$1" in
