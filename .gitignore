@@ -9,3 +9,8 @@ build/
 
 ### IDEA ####
 .idea/
+
+
+### Local ###
+.env
+local_env.sh
