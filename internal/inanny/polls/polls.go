@@ -1,6 +1,7 @@
 package poll
 
 import (
+	"errors"
 	"strings"
 )
 
@@ -27,7 +28,11 @@ func ParsePoll(input string) (Poll, error) {
 	input = strings.TrimSpace(input)
 
 	flags, remain, _ := parseFlags(input)
-	title, remain, _ := parseTitle(remain)
+	title, remain, err := parseTitle(remain)
+	if err != nil {
+		return Poll{}, err
+	}
+
 	options, _, _ := parseOptions(remain)
 
 	return Poll{
@@ -73,7 +78,12 @@ func parseTitle(input string) (string, string, error) {
 		return input, "", nil
 	}
 
-	return input[:titleDelimeterIndex], input[titleDelimeterIndex+1:], nil
+	title := input[:titleDelimeterIndex]
+	if title == "" {
+		return "", "", errors.New("Title can't be empty")
+	}
+
+	return title, input[titleDelimeterIndex+1:], nil
 }
 
 func parseOptions(input string) ([]string, string, error) {

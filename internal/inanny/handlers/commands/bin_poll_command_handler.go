@@ -14,30 +14,25 @@ type BinPollCommandHandler struct {
 	CommandHandler
 }
 
-func (handler *BinPollCommandHandler) Handle(bot *tgbot.BotAPI, update *tgbot.Update) error {
-	poll, _ := polls.ParsePoll(update.Message.CommandArguments())
+func (handler BinPollCommandHandler) Handle(bot *tgbot.BotAPI, update *tgbot.Update) error {
+	poll, err := polls.ParsePoll(update.Message.CommandArguments())
+	if err != nil {
+		return err
+	}
+
 	pollConfig := tgbot.NewPoll(
 		update.Message.Chat.ID,
 		poll.Title,
 		[]string{yes, no}...,
 	)
 
-	pollConfig.IsAnonymous = false
-	for _, flag := range poll.Flags {
-		switch flag {
-		case polls.Anonymous:
-			pollConfig.IsAnonymous = true
-		case polls.Multipoll:
-			pollConfig.AllowsMultipleAnswers = true
-		}
-	}
-
-	bot.Send(pollConfig)
-	return nil
+	applyFlagsToPollConfig(&pollConfig, poll.Flags)
+	_, err = bot.Send(pollConfig)
+	return err
 }
 
-func NewBinPollCommandHandler() *BinPollCommandHandler {
-	return &BinPollCommandHandler{
+func NewBinPollCommandHandler() BinPollCommandHandler {
+	return BinPollCommandHandler{
 		CommandHandler: CommandHandler{
 			command: "bin_poll",
 		},

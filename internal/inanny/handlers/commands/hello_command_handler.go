@@ -8,7 +8,7 @@ type HelloCommandHandler struct {
 	CommandHandler
 }
 
-func (handler *HelloCommandHandler) Handle(bot *tgbot.BotAPI, update *tgbot.Update) error {
+func (handler HelloCommandHandler) Handle(bot *tgbot.BotAPI, update *tgbot.Update) error {
 	firstname := update.Message.From.FirstName
 	message := "Привет, мой дорогой друг, " + firstname
 
@@ -19,8 +19,8 @@ func (handler *HelloCommandHandler) Handle(bot *tgbot.BotAPI, update *tgbot.Upda
 	return nil
 }
 
-func NewHelloCommandHandler() *HelloCommandHandler {
-	return &HelloCommandHandler{
+func NewHelloCommandHandler() HelloCommandHandler {
+	return HelloCommandHandler{
 		CommandHandler{
 			command: "hello",
 		},

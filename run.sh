@@ -34,7 +34,7 @@ case "$1" in
         echo "Building Docker image..."
         build
         ;;
-    rab)
+    bar)
         echo "Rebuilding and running Docker container..."
         check_env
         build

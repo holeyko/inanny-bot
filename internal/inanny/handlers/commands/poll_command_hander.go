@@ -11,8 +11,11 @@ type PollCommandHandler struct {
 	CommandHandler
 }
 
-func (handler *PollCommandHandler) Handle(bot *tgbot.BotAPI, update *tgbot.Update) error {
-	poll, _ := polls.ParsePoll(update.Message.CommandArguments())
+func (handler PollCommandHandler) Handle(bot *tgbot.BotAPI, update *tgbot.Update) error {
+	poll, err := polls.ParsePoll(update.Message.CommandArguments())
+	if err != nil {
+		return nil
+	}
 	if len(poll.Options) < 2 {
 		return errors.New("Should be at least 2 options")
 	}
@@ -23,22 +26,13 @@ func (handler *PollCommandHandler) Handle(bot *tgbot.BotAPI, update *tgbot.Updat
 		poll.Options...,
 	)
 
-	pollConfig.IsAnonymous = false
-	for _, flag := range poll.Flags {
-		switch flag {
-		case polls.Anonymous:
-			pollConfig.IsAnonymous = true
-		case polls.Multipoll:
-			pollConfig.AllowsMultipleAnswers = true
-		}
-	}
-
-	bot.Send(pollConfig)
-	return nil
+	applyFlagsToPollConfig(&pollConfig, poll.Flags)
+	_, err = bot.Send(pollConfig)
+	return err
 }
 
-func NewPollCommandHandler() *PollCommandHandler {
-	return &PollCommandHandler{
+func NewPollCommandHandler() PollCommandHandler {
+	return PollCommandHandler{
 		CommandHandler: CommandHandler{
 			command: "poll",
 		},
