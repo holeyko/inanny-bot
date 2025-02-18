@@ -9,6 +9,11 @@ import (
 )
 
 func main() {
+	bot := createBot()
+	startHandeRequests(bot)
+}
+
+func createBot() *tgbot.BotAPI {
 	botToken := os.Getenv("TELEGRAM_BOT_TOKEN")
 	if botToken == "" {
 		log.Fatal("Can't find TELEGRAM_BOT_TOKEN environment variable")
@@ -19,8 +24,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	log.Println("Telegram bot Innany was started")
-	handeRequests(bot)
+	return bot
 }
 
 func buildUpdateConfig() tgbot.UpdateConfig {
@@ -30,17 +34,22 @@ func buildUpdateConfig() tgbot.UpdateConfig {
 	return updateConfig
 }
 
-func handeRequests(bot *tgbot.BotAPI) {
+func startHandeRequests(bot *tgbot.BotAPI) {
 	updates := bot.GetUpdatesChan(buildUpdateConfig())
+	log.Println("Telegram bot Innany was started")
 
 	for update := range updates {
-		if message := update.Message; message != nil {
-			if command := message.Command(); command != "" {
-				if handler := commands.FindCommandHandler(command); handler != nil {
-					err := handler.Handle(bot, &update)
-					if err != nil {
-						sendErrorResponse(bot, message.Chat.ID, err)
-					}
+		go handleRequest(bot, &update)
+	}
+}
+
+func handleRequest(bot *tgbot.BotAPI, update *tgbot.Update) {
+	if message := update.Message; message != nil {
+		if command := message.Command(); command != "" {
+			if handler := commands.FindCommandHandler(command); handler != nil {
+				err := handler.Handle(bot, update)
+				if err != nil {
+					sendErrorResponse(bot, message.Chat.ID, err)
 				}
 			}
 		}
