@@ -7,6 +7,8 @@ if [ -z "$1" ]; then
 fi
 
 check_env() {
+    echo "Check env variables..."
+
     if [ -z "${TELEGRAM_BOT_TOKEN}" ]; then
         echo "TELEGRAM_BOT_TOKEN is not set."
         exit 1
@@ -14,30 +16,40 @@ check_env() {
 }
 
 run() {
-    docker run --rm -d \
+    echo "Run docker container..."
+
+    docker run -d \
         -e TELEGRAM_BOT_TOKEN=$TELEGRAM_BOT_TOKEN \
         --name inanny-bot \
         inanny-bot
 }
 
 build() {
+    echo "Build docker image..."
+
     docker build -t inanny-bot .
+}
+
+clean() {
+    echo "Clean previous docker container"
+
+    docker stop inanny-bot
+    docker rm inanny-bot
 }
 
 case "$1" in
     run)
-        echo "Running Docker container..."
         check_env
+        clean
         run
         ;;
     build)
-        echo "Building Docker image..."
         build
         ;;
     bar)
-        echo "Rebuilding and running Docker container..."
         check_env
         build
+        clean
         run
         ;;
     *)
