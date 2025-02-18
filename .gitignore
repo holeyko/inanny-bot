@@ -12,5 +12,4 @@ build/
 
 
 ### Local ###
-.env
-local_env.sh
+local/
