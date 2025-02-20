@@ -6,8 +6,9 @@ import (
 )
 
 const (
-	yes = "Да"
-	no  = "Нет"
+	yes   = "Да"
+	no    = "Нет"
+	other = "Тык"
 )
 
 type BinPollCommandHandler struct {
@@ -23,7 +24,7 @@ func (handler BinPollCommandHandler) Handle(bot *tgbot.BotAPI, update *tgbot.Upd
 	pollConfig := tgbot.NewPoll(
 		update.Message.Chat.ID,
 		poll.Title,
-		[]string{yes, no}...,
+		[]string{yes, no, other}...,
 	)
 
 	applyFlagsToPollConfig(&pollConfig, poll.Flags)
