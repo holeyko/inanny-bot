@@ -11,33 +11,32 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - name: Build the Docker image
-      run: docker build -t inanny-bot:${{ github.run_number }} .
+      env:
+        IMAGE_VERSION: ${{ github.run_number }}
+      run: make docker-build
 
-  stop-existing-container:
+  rm-previous-docker-resources:
     runs-on: self-hosted
     needs: build-image
     steps:
-    - name: Containers for remove
-      run: echo "REMOVE_CONTAINERS=$(docker ps -a --format '{{.ID}} {{.Image}}' | awk '/inanny-bot:.*/ {print $1}')" >> $GITHUB_ENV
-    - name: Stop existing container
-      run: docker stop ${{ env.REMOVE_CONTAINERS }} || true
     - name: Remove existing container
-      run: docker rm ${{ env.REMOVE_CONTAINERS }} || true
+      run: make docker-clean
     - name: Remove previous images
+      env:
+        IMAGE_VERSION: ${{ github.run_number }}
       run: |
           IMAGE_NAME=inanny-bot
-          SPECIFIC_TAG=${{ github.run_number }}
           IMAGES=$(docker images --format "{{.Repository}}:{{.Tag}}" | grep "$IMAGE_NAME")
           echo $IMAGES
           for IMAGE in $IMAGES; do
-            if [[ $IMAGE != *"$SPECIFIC_TAG" ]]; then
+            if [[ $IMAGE != *"$IMAGE_VERSION" ]]; then
               docker rmi $IMAGE || true
             fi
           done
   
   run-container:
     runs-on: self-hosted
-    needs: stop-existing-container
+    needs: rm-previous-docker-resources
     steps:
     - name: Run the Docker container
       env:
@@ -46,11 +45,5 @@ jobs:
         DB_USER: ${{ secrets.DB_USER }}
         DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
         DB_NAME: ${{ secrets.DB_NAME }}
-      run: |
-        docker run --rm -d \
-          -e TELEGRAM_BOT_TOKEN=$TELEGRAM_BOT_TOKEN \
-          -e DB_HOST=$DB_HOST \
-          -e DB_USER=$DB_USER \
-          -e DB_PASSWORD=$DB_PASSWORD \
-          -e DB_NAME=$DB_NAME \
-          inanny-bot:${{ github.run_number }}
+        IMAGE_VERSION: ${{ github.run_number }}
+      run: make docker-run
