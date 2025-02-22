@@ -4,6 +4,9 @@ MAIN_PATH = ./cmd/inanny/main.go
 BUILD_DIR = ./build
 APP = app
 
+DOCKER_VERSION ?= latest
+
+
 .PHONY: clean build run docker-clean docker-build docker-run bar
 
 
@@ -26,7 +29,7 @@ docker-clean:
 
 docker-build:
 	@echo "Build docker image..."
-	docker build -t $(DOCKER_IMAGE) .
+	docker build -t $(DOCKER_IMAGE):$(DOCKER_VERSION) .
 
 docker-run: docker-clean
 	@echo "Run docker container..."
@@ -37,6 +40,6 @@ docker-run: docker-clean
 		-e DB_PASSWORD=$(DB_PASSWORD) \
 		-e DB_NAME=$(DB_NAME) \
 		--name $(DOCKER_CONTAINER) \
-		$(DOCKER_IMAGE)
+		$(DOCKER_IMAGE):$(DOCKER_VERSION)
 
 docker-bar: docker-build docker-run
