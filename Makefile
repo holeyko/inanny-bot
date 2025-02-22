@@ -4,7 +4,7 @@ MAIN_PATH = ./cmd/inanny/main.go
 BUILD_DIR = ./build
 APP = app
 
-DOCKER_VERSION ?= latest
+IMAGE_VERSION ?= latest
 
 
 .PHONY: clean build run docker-clean docker-build docker-run bar
@@ -24,15 +24,18 @@ bar: build run
 
 docker-clean:
 	@echo "Clean previous docker container..."
-	@docker stop $(DOCKER_CONTAINER) > /dev/null || true
-	@docker rm $(DOCKER_CONTAINER) > /dev/null || true
+
+	@-docker stop $(DOCKER_CONTAINER) > /dev/null || true
+	@-docker rm $(DOCKER_CONTAINER) > /dev/null || true
 
 docker-build:
 	@echo "Build docker image..."
-	docker build -t $(DOCKER_IMAGE):$(DOCKER_VERSION) .
+
+	docker build -t $(DOCKER_IMAGE):$(IMAGE_VERSION) .
 
 docker-run: docker-clean
 	@echo "Run docker container..."
+
 	@docker run -d \
 		-e TELEGRAM_BOT_TOKEN=$(TELEGRAM_BOT_TOKEN) \
 		-e DB_HOST=$(DB_HOST) \
@@ -40,6 +43,6 @@ docker-run: docker-clean
 		-e DB_PASSWORD=$(DB_PASSWORD) \
 		-e DB_NAME=$(DB_NAME) \
 		--name $(DOCKER_CONTAINER) \
-		$(DOCKER_IMAGE):$(DOCKER_VERSION)
+		$(DOCKER_IMAGE):$(IMAGE_VERSION)
 
 docker-bar: docker-build docker-run
