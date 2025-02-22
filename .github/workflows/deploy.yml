@@ -13,7 +13,7 @@ jobs:
     - name: Build the Docker image
       env:
         IMAGE_VERSION: ${{ github.run_number }}
-      run: IMAGE_VERSION=$IMAGE_VERSION make docker-build
+      run: make docker-build
 
   rm-previous-docker-resources:
     runs-on: self-hosted
@@ -22,13 +22,14 @@ jobs:
     - name: Remove existing container
       run: make docker-clean
     - name: Remove previous images
+      env:
+        IMAGE_VERSION: ${{ github.run_number }}
       run: |
           IMAGE_NAME=inanny-bot
-          SPECIFIC_TAG=${{ github.run_number }}
           IMAGES=$(docker images --format "{{.Repository}}:{{.Tag}}" | grep "$IMAGE_NAME")
           echo $IMAGES
           for IMAGE in $IMAGES; do
-            if [[ $IMAGE != *"$SPECIFIC_TAG" ]]; then
+            if [[ $IMAGE != *"$IMAGE_VERSION" ]]; then
               docker rmi $IMAGE || true
             fi
           done
