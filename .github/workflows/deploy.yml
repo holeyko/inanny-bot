@@ -13,7 +13,7 @@ jobs:
     - name: Build the Docker image
       env:
         IMAGE_VERSION: ${{ github.run_number }}
-      run: make docker-build
+      run: IMAGE_VERSION=$IMAGE_VERSION make docker-build
 
   rm-previous-docker-resources:
     runs-on: self-hosted
