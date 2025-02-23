@@ -53,4 +53,5 @@ db-migrate:
 		--username="${DB_USER}" \
 		--password="${DB_PASSWORD}" \
 		--changeLogFile=migrate/changelog.xml \
+		--classpath=libs/postgresql-42.7.5.jar
 		update
