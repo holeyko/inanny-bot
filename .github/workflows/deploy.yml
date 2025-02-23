@@ -22,9 +22,15 @@ jobs:
         IMAGE_VERSION: ${{ github.run_number }}
       run: make docker-build
 
+  db-migrate:
+    runs-on: self-hosted
+    steps:
+      - name: Migrate database
+        run: make db-migrate
+
   rm-previous-docker-resources:
     runs-on: self-hosted
-    needs: build-image
+    needs: [build-image, db-migrate]
     steps:
     - name: Remove existing container
       run: make docker-clean
@@ -40,15 +46,9 @@ jobs:
             fi
           done
   
-  db-migrate:
-    runs-on: self-hosted
-    steps:
-      - name: Migrate database
-        run: make db-migrate
-  
   run-container:
     runs-on: self-hosted
-    needs: [rm-previous-docker-resources, db-migrate]
+    needs: rm-previous-docker-resources
     steps:
     - name: Run the Docker container
       env:
