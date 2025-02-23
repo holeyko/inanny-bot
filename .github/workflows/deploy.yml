@@ -4,6 +4,13 @@ on:
   push:
     branches:
       - main
+      
+env:
+  TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+  DB_USER: ${{ secrets.DB_USER }}
+  DB_HOST: ${{ secrets.DB_HOST }}
+  DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+  DB_NAME: ${{ secrets.DB_NAME }}
 
 jobs:
   build-image:
@@ -15,9 +22,15 @@ jobs:
         IMAGE_VERSION: ${{ github.run_number }}
       run: make docker-build
 
+  db-migrate:
+    runs-on: self-hosted
+    steps:
+      - name: Migrate database
+        run: make db-migrate
+
   rm-previous-docker-resources:
     runs-on: self-hosted
-    needs: build-image
+    needs: [build-image, db-migrate]
     steps:
     - name: Remove existing container
       run: make docker-clean
@@ -39,10 +52,5 @@ jobs:
     steps:
     - name: Run the Docker container
       env:
-        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-        DB_HOST: ${{ secrets.DB_HOST }}
-        DB_USER: ${{ secrets.DB_USER }}
-        DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
-        DB_NAME: ${{ secrets.DB_NAME }}
         IMAGE_VERSION: ${{ github.run_number }}
       run: make docker-run
