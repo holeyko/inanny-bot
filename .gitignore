@@ -5,7 +5,6 @@ build/
 ### VSCode ###
 .vscode/
 .code/
-innany-tgbot.code-workspace
 
 
 ### IDEA ####
