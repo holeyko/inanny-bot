@@ -22,10 +22,9 @@ jobs:
     - name: Remove existing container
       run: make docker-clean
     - name: Remove previous images
-      env:
-        IMAGE_VERSION: ${{ github.run_number }}
       run: |
           IMAGE_NAME=inanny-bot
+          IMAGE_VERSION=${{ github.run_number }}
           IMAGES=$(docker images --format "{{.Repository}}:{{.Tag}}" | grep "$IMAGE_NAME")
           echo $IMAGES
           for IMAGE in $IMAGES; do
