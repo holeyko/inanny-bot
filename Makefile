@@ -46,3 +46,11 @@ docker-run: docker-clean
 		$(DOCKER_IMAGE):$(IMAGE_VERSION)
 
 docker-bar: docker-build docker-run
+	
+db-migrate:
+	liquibase \
+		--url="jdbc:postgresql://${DB_HOST}/${DB_NAME}" \
+		--username="${DB_USER}" \
+		--password="${DB_PASSWORD}" \
+		--changeLogFile=migrate/changelog.xml \
+		update
