@@ -15,8 +15,8 @@ func (handler HelloCommandHandler) Handle(bot *tgbot.BotAPI, update *tgbot.Updat
 	messageConfig := tgbot.NewMessage(update.Message.Chat.ID, message)
 	messageConfig.ReplyToMessageID = update.Message.MessageID
 
-	bot.Send(messageConfig)
-	return nil
+	_, err := bot.Send(messageConfig)
+	return err
 }
 
 func NewHelloCommandHandler() HelloCommandHandler {
