@@ -11,7 +11,7 @@ const (
 	Anonymous Flag = "ano"
 	Multipoll Flag = "mul"
 
-	titleDelimeter  = ":"
+	titleDelimeter  = "\n"
 	flagsDelimeter  = ","
 	optionDelimeter = "\n"
 	openFlagSymb    = "["
