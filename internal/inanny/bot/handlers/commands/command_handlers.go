@@ -2,8 +2,8 @@ package command
 
 import (
 	tgbot "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	handlers "github.com/holeyko/innany-tgbot/internal/inanny/handlers"
-	polls "github.com/holeyko/innany-tgbot/internal/inanny/polls"
+	handlers "github.com/holeyko/innany-tgbot/internal/inanny/bot/handlers"
+	polls "github.com/holeyko/innany-tgbot/internal/inanny/bot/polls"
 )
 
 type CommandHandler struct {
@@ -39,5 +39,13 @@ func applyFlagsToPollConfig(pollConfig *tgbot.SendPollConfig, flags []polls.Flag
 		case polls.Multipoll:
 			pollConfig.AllowsMultipleAnswers = true
 		}
+	}
+}
+
+func createPinConfig(chatId int64, messageId int, notify bool) *tgbot.PinChatMessageConfig {
+	return &tgbot.PinChatMessageConfig{
+		ChatID:              chatId,
+		MessageID:           messageId,
+		DisableNotification: !notify,
 	}
 }

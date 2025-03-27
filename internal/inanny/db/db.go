@@ -1,4 +1,4 @@
-package dao
+package db
 
 import (
 	"context"
@@ -20,15 +20,14 @@ var (
 )
 
 func Execute[T any](f func(pool *pgxpool.Pool) T) T {
-	log.Println("Before retreiving connection")
 	pool, err := pgxpool.New(context.Background(), connectionString)
 	if err != nil {
 		log.Fatalln("Exception while pooling connection", err)
 	}
 
-	result := f(pool)
+	defer pool.Close()
 
-	pool.Close()
+	result := f(pool)
 
 	return result
 }

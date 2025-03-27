@@ -1,8 +1,10 @@
 package command
 
 import (
+	"slices"
+
 	tgbot "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	polls "github.com/holeyko/innany-tgbot/internal/inanny/polls"
+	polls "github.com/holeyko/innany-tgbot/internal/inanny/bot/polls"
 )
 
 const (
@@ -28,7 +30,22 @@ func (handler BinPollCommandHandler) Handle(bot *tgbot.BotAPI, update *tgbot.Upd
 	)
 
 	applyFlagsToPollConfig(&pollConfig, poll.Flags)
-	_, err = bot.Send(pollConfig)
+	message, err := bot.Send(pollConfig)
+
+	if err != nil {
+		return nil
+	}
+
+	if slices.Contains(poll.Flags, polls.Pin) {
+		pinConfig := createPinConfig(
+			update.Message.Chat.ID,
+			message.MessageID,
+			true,
+		)
+
+		_, err = bot.Request(pinConfig)
+	}
+
 	return err
 }
 
