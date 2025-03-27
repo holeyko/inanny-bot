@@ -6,7 +6,7 @@ import (
 	"os"
 
 	tgbot "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	commands "github.com/holeyko/innany-tgbot/internal/inanny/handlers/commands"
+	commands "github.com/holeyko/innany-tgbot/internal/inanny/bot/handlers/commands"
 )
 
 func StartBot() {
@@ -46,19 +46,36 @@ func startHandeRequests(bot *tgbot.BotAPI) {
 
 func handleRequest(bot *tgbot.BotAPI, update *tgbot.Update) {
 	var err error
+
+	if err == nil {
+		err = tryHandleMessage(bot, update)
+	}
+	if err == nil {
+		err = tryHandleCallback(bot, update)
+	}
+
+	if err != nil {
+		handleError(bot, update, err)
+	}
+}
+
+func tryHandleMessage(bot *tgbot.BotAPI, update *tgbot.Update) (err error) {
 	if message := update.Message; message != nil {
 		if command := message.Command(); command != "" {
 			err = handleCommand(bot, update)
 		}
 	}
 
-	if err != nil {
-		if update.Message == nil {
-			log.Println("Error while handling update without message:", err)
-		} else {
-			sendErrorResponse(bot, update.Message.Chat.ID, err)
-		}
+	return
+}
+
+func tryHandleCallback(bot *tgbot.BotAPI, update *tgbot.Update) (err error) {
+	if callback := update.CallbackQuery; callback != nil {
+		callbackData := callback.Data
+		log.Println("Callback data:", callbackData)
 	}
+
+	return
 }
 
 func handleCommand(bot *tgbot.BotAPI, update *tgbot.Update) (err error) {
@@ -72,6 +89,14 @@ func handleCommand(bot *tgbot.BotAPI, update *tgbot.Update) (err error) {
 	}
 
 	return
+}
+
+func handleError(bot *tgbot.BotAPI, update *tgbot.Update, err error) {
+	if update.Message == nil {
+		log.Println("Error while handling update without message:", err)
+	} else {
+		sendErrorResponse(bot, update.Message.Chat.ID, err)
+	}
 }
 
 func sendErrorResponse(bot *tgbot.BotAPI, chatId int64, err error) {

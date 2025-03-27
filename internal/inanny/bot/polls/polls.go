@@ -10,6 +10,7 @@ type Flag string
 const (
 	Anonymous Flag = "ano"
 	Multipoll Flag = "mul"
+	Pin       Flag = "pin"
 
 	titleDelimeter  = "\n"
 	flagsDelimeter  = ","
