@@ -1,16 +1,12 @@
 package command
 
 import (
-	"slices"
-
 	tgbot "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	polls "github.com/holeyko/innany-tgbot/internal/inanny/bot/polls"
 )
 
-const (
-	yes   = "Да"
-	no    = "Нет"
-	other = "Тык"
+var (
+	binOptions = []string{"Да", "Нет", "Тык"}
 )
 
 type BinPollCommandHandler struct {
@@ -23,29 +19,8 @@ func (handler BinPollCommandHandler) Handle(bot *tgbot.BotAPI, update *tgbot.Upd
 		return err
 	}
 
-	pollConfig := tgbot.NewPoll(
-		update.Message.Chat.ID,
-		poll.Title,
-		[]string{yes, no, other}...,
-	)
-
-	applyFlagsToPollConfig(&pollConfig, poll.Flags)
-	message, err := bot.Send(pollConfig)
-
-	if err != nil {
-		return nil
-	}
-
-	if slices.Contains(poll.Flags, polls.Pin) {
-		pinConfig := createPinConfig(
-			update.Message.Chat.ID,
-			message.MessageID,
-			true,
-		)
-
-		_, err = bot.Request(pinConfig)
-	}
-
+	poll.Options = binOptions
+	err = polls.SendPoll(bot, &poll, update.Message.Chat.ID)
 	return err
 }
 
