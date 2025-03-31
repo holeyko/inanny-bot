@@ -10,16 +10,12 @@ type FlowStep string
 // 	HandleNextStep(state FlowState[DATA], context CONTEXT, nextStep FlowStep) (err error)
 // }
 
-// func foo[CONTEXT any, DATA any]() {
-
-// }
-
-// type FlowState[DATA any] struct {
-// 	tgId int64
-// 	flow FlowName
-// 	step FlowStep
-// 	data DATA
-// }
+type FlowState[DATA any] struct {
+	tgId int64
+	flow FlowName
+	step FlowStep
+	data DATA
+}
 
 const (
 	Initial     FlowStep = "INITIAL"
