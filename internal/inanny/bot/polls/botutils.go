@@ -7,32 +7,32 @@ import (
 	tgbot "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
-func SendPoll(bot *tgbot.BotAPI, poll *Poll, chatId int64) (err error) {
-	if len(poll.Options) < 2 {
-		return errors.New("Should be at least 2 options")
+func SendPoll(bot *tgbot.BotAPI, poll *Poll, message *tgbot.Message) (err error) {
+	err = checkPoll(poll)
+	if err != nil {
+		return
 	}
 
 	pollConfig := tgbot.NewPoll(
-		chatId,
+		message.Chat.ID,
 		poll.Title,
 		poll.Options...,
 	)
 
 	applyFlagsToPollConfig(&pollConfig, poll.Flags)
-	message, err := bot.Send(pollConfig)
+	pollMessage, err := bot.Send(pollConfig)
 
 	if err != nil {
-		return nil
+		return
 	}
 
-	if slices.Contains(poll.Flags, Pin) {
-		pinConfig := createPinConfig(
-			chatId,
-			message.MessageID,
-			true,
-		)
+	err = postPollProcessing(bot, poll, message, &pollMessage)
+	return
+}
 
-		_, err = bot.Request(pinConfig)
+func checkPoll(poll *Poll) (err error) {
+	if len(poll.Options) < 2 {
+		err = errors.New("Should be at least 2 options")
 	}
 
 	return
@@ -50,10 +50,35 @@ func applyFlagsToPollConfig(pollConfig *tgbot.SendPollConfig, flags []Flag) {
 	}
 }
 
-func createPinConfig(chatId int64, messageId int, notify bool) *tgbot.PinChatMessageConfig {
-	return &tgbot.PinChatMessageConfig{
+func postPollProcessing(bot *tgbot.BotAPI, poll *Poll, message *tgbot.Message, pollMessage *tgbot.Message) (err error) {
+	if slices.Contains(poll.Flags, Pin) {
+		_, err = pinMessage(bot, pollMessage.Chat.ID, pollMessage.MessageID, true)
+	}
+	if slices.Contains(poll.Flags, Remove) {
+		_, err = removeMessage(bot, message.Chat.ID, message.MessageID)
+	}
+
+	return
+}
+
+func pinMessage(
+	bot *tgbot.BotAPI,
+	chatId int64,
+	messageId int,
+	notify bool,
+) (response *tgbot.APIResponse, err error) {
+	pinConfig := tgbot.PinChatMessageConfig{
 		ChatID:              chatId,
 		MessageID:           messageId,
 		DisableNotification: !notify,
 	}
+
+	response, err = bot.Request(pinConfig)
+	return
+}
+
+func removeMessage(bot *tgbot.BotAPI, chatId int64, messageId int) (response *tgbot.APIResponse, err error) {
+	deleteMessge := tgbot.NewDeleteMessage(chatId, messageId)
+	_, err = bot.Request(deleteMessge)
+	return
 }

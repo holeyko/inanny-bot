@@ -20,7 +20,7 @@ func (handler BinPollCommandHandler) Handle(bot *tgbot.BotAPI, update *tgbot.Upd
 	}
 
 	poll.Options = binOptions
-	err = polls.SendPoll(bot, &poll, update.Message.Chat.ID)
+	err = polls.SendPoll(bot, &poll, update.Message)
 	return err
 }
 

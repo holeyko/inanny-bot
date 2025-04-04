@@ -11,6 +11,7 @@ const (
 	Anonymous Flag = "ano"
 	Multipoll Flag = "mul"
 	Pin       Flag = "pin"
+	Remove    Flag = "rm"
 
 	titleDelimeter  = "\n"
 	flagsDelimeter  = ","

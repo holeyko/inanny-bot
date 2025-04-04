@@ -15,7 +15,7 @@ func (handler PollCommandHandler) Handle(bot *tgbot.BotAPI, update *tgbot.Update
 		return nil
 	}
 
-	err = polls.SendPoll(bot, &poll, update.Message.Chat.ID)
+	err = polls.SendPoll(bot, &poll, update.Message)
 	return err
 }
 
