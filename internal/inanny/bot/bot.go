@@ -7,10 +7,14 @@ import (
 
 	tgbot "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	commands "github.com/holeyko/innany-tgbot/internal/inanny/bot/handlers/commands"
+	polls "github.com/holeyko/innany-tgbot/internal/inanny/features/polls"
 )
 
 func StartBot() {
 	bot := createBot()
+	if err := polls.StartScheduler(bot); err != nil {
+		log.Println("Cron poll scheduler started without persisted polls:", err)
+	}
 	startHandeRequests(bot)
 }
 

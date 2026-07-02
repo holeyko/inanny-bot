@@ -8,13 +8,23 @@ import (
 )
 
 func SendPoll(bot *tgbot.BotAPI, poll *Poll, message *tgbot.Message) (err error) {
-	err = checkPoll(poll)
+	err = sendPollToChat(bot, poll, message.Chat.ID, message)
+	return
+}
+
+func SendPollToChat(bot *tgbot.BotAPI, poll *Poll, chatID int64) (err error) {
+	err = sendPollToChat(bot, poll, chatID, nil)
+	return
+}
+
+func sendPollToChat(bot *tgbot.BotAPI, poll *Poll, chatID int64, sourceMessage *tgbot.Message) (err error) {
+	err = CheckPoll(poll)
 	if err != nil {
 		return
 	}
 
 	pollConfig := tgbot.NewPoll(
-		message.Chat.ID,
+		chatID,
 		poll.Title,
 		poll.Options...,
 	)
@@ -26,11 +36,11 @@ func SendPoll(bot *tgbot.BotAPI, poll *Poll, message *tgbot.Message) (err error)
 		return
 	}
 
-	err = postPollProcessing(bot, poll, message, &pollMessage)
+	err = postPollProcessing(bot, poll, sourceMessage, &pollMessage)
 	return
 }
 
-func checkPoll(poll *Poll) (err error) {
+func CheckPoll(poll *Poll) (err error) {
 	if len(poll.Options) < 2 {
 		err = errors.New("Should be at least 2 options")
 	}
@@ -54,7 +64,7 @@ func postPollProcessing(bot *tgbot.BotAPI, poll *Poll, message *tgbot.Message, p
 	if slices.Contains(poll.Flags, Pin) {
 		_, err = pinMessage(bot, pollMessage.Chat.ID, pollMessage.MessageID, true)
 	}
-	if slices.Contains(poll.Flags, Remove) {
+	if sourceMessage := message; sourceMessage != nil && slices.Contains(poll.Flags, Remove) {
 		_, err = removeMessage(bot, message.Chat.ID, message.MessageID)
 	}
 
