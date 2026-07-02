@@ -13,8 +13,8 @@ func (handler CommandHandler) IsSutable(command *string) bool {
 }
 
 var commandHandlers = [...]handlers.TgUpdateHandler[string]{
+	NewHelpCommandHandler(),
 	NewPollCommandHandler(),
-	NewBinPollCommandHandler(),
 	NewBPCommandHandler(),
 	NewTPCommandHandler(),
 	NewPollsCommandHandler(),

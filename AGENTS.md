@@ -19,4 +19,5 @@
 ## Project Structure
 - Real app entrypoint: `cmd/inanny/main.go`, which calls `internal/inanny/bot.StartBot()`.
 - Telegram commands are registered in `internal/inanny/bot/handlers/commands/commands.go`; adding a command handler also requires adding it to `commandHandlers`.
+- After adding, editing, or deleting any bot command, update the `/help` command text to keep user-facing command documentation current.
 - Docker builds the same entrypoint and runs `/app/main`; `make docker-run` passes only the Telegram and DB env vars listed above.
