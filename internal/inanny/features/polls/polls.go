@@ -15,6 +15,7 @@ const (
 	Multipoll Flag = "mul"
 	Pin       Flag = "pin"
 	Remove    Flag = "rm"
+	Cron      Flag = "cron"
 
 	titleDelimeter  = "\n"
 	flagsDelimeter  = ","

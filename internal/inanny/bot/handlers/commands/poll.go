@@ -28,38 +28,7 @@ func handlePollCommand(bot *tgbot.BotAPI, update *tgbot.Update, command string, 
 	if pollCommand.CronExpr == "" {
 		return polls.SendPoll(bot, &pollCommand.Poll, update.Message)
 	}
-	if err := polls.CheckPoll(&pollCommand.Poll); err != nil {
-		return err
-	}
-
-	user, err := polls.UpsertUser(polls.UserDto{
-		TelegramLogin: update.Message.From.UserName,
-		FirstName:     update.Message.From.FirstName,
-		LastName:      update.Message.From.LastName,
-	})
-	if err != nil {
-		return err
-	}
-
-	storedPoll, err := polls.CreateStoredPoll(polls.CreateStoredPollDto{
-		ChatID:   update.Message.Chat.ID,
-		UserID:   user.ID,
-		Command:  command,
-		Poll:     pollCommand.Poll,
-		CronExpr: pollCommand.CronExpr,
-	})
-	if err != nil {
-		return err
-	}
-
-	if err := polls.RegisterCronPoll(storedPoll); err != nil {
-		return err
-	}
-
-	messageConfig := tgbot.NewMessage(update.Message.Chat.ID, fmt.Sprintf("Cron poll #%d was created", storedPoll.ID))
-	messageConfig.ReplyToMessageID = update.Message.MessageID
-	_, err = bot.Send(messageConfig)
-	return err
+	return fmt.Errorf("Cron poll creation moved to /bin_poll [cron]")
 }
 
 func NewPollCommandHandler() PollCommandHandler {

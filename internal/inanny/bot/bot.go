@@ -15,6 +15,7 @@ func StartBot() {
 	if err := polls.StartScheduler(bot); err != nil {
 		log.Println("Cron poll scheduler started without persisted polls:", err)
 	}
+	polls.StartDraftCleanup()
 	startHandeRequests(bot)
 }
 
@@ -65,6 +66,10 @@ func handleRequest(bot *tgbot.BotAPI, update *tgbot.Update) {
 
 func tryHandleMessage(bot *tgbot.BotAPI, update *tgbot.Update) (err error) {
 	if message := update.Message; message != nil {
+		if handled, draftErr := polls.TryHandleBinPollDraftReply(bot, update); handled || draftErr != nil {
+			return draftErr
+		}
+
 		if command := message.Command(); command != "" {
 			err = handleCommand(bot, update)
 		}

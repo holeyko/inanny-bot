@@ -30,6 +30,21 @@ type Poll struct {
 	UpdatedAt pgtype.Timestamp
 }
 
+type PollDraft struct {
+	ID              int64
+	ChatID          int64
+	UserID          int64
+	Command         string
+	Title           string
+	Flags           []string
+	PinEnabled      bool
+	CronExpr        pgtype.Text
+	SourceMessageID int64
+	PromptMessageID int64
+	CreatedAt       pgtype.Timestamp
+	UpdatedAt       pgtype.Timestamp
+}
+
 type User struct {
 	ID            int64
 	TelegramLogin string
