@@ -66,7 +66,7 @@ func handleRequest(bot *tgbot.BotAPI, update *tgbot.Update) {
 
 func tryHandleMessage(bot *tgbot.BotAPI, update *tgbot.Update) (err error) {
 	if message := update.Message; message != nil {
-		if handled, draftErr := polls.TryHandleBinPollDraftReply(bot, update); handled || draftErr != nil {
+		if handled, draftErr := polls.TryHandlePollDraftReply(bot, update); handled || draftErr != nil {
 			return draftErr
 		}
 

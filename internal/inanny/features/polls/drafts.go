@@ -15,20 +15,9 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const (
-	binPollCommandName = "bin_poll"
-	draftTTL           = time2.Hour
-)
+const draftTTL = time2.Hour
 
-var (
-	binPollOptions       = []string{"Да", "Нет"}
-	ErrPollDraftNotFound = errors2.New("poll draft not found")
-)
-
-type BinPollCommand struct {
-	Poll         Poll
-	PendingFlags []Flag
-}
+var ErrPollDraftNotFound = errors2.New("poll draft not found")
 
 type PollDraft struct {
 	ID              int64
@@ -36,9 +25,11 @@ type PollDraft struct {
 	UserID          int64
 	Command         string
 	Title           string
-	PendingFlags    []Flag
+	Options         []string
+	Flags           []Flag
 	PinEnabled      bool
 	CronExpr        string
+	StepIndex       int32
 	SourceMessageID int64
 	PromptMessageID int64
 	CreatedAt       time2.Time
@@ -50,100 +41,39 @@ type CreatePollDraftDto struct {
 	UserID          int64
 	Command         string
 	Title           string
-	PendingFlags    []Flag
+	Options         []string
+	Flags           []Flag
 	PinEnabled      bool
 	CronExpr        string
+	StepIndex       int32
 	SourceMessageID int64
 	PromptMessageID int64
 }
 
 type UpdatePollDraftDto struct {
 	ID              int64
-	PendingFlags    []Flag
 	PinEnabled      bool
 	CronExpr        string
+	StepIndex       int32
 	PromptMessageID int64
 }
 
-func ParseBinPollCommand(input string) (BinPollCommand, error) {
-	flags, body, err := parseBinPollCommandFlagsAndBody(input)
-	if err != nil {
-		return BinPollCommand{}, err
-	}
-
-	if strings2.TrimSpace(body) == "" {
-		return BinPollCommand{}, errors2.New("Body can't be empty")
-	}
-
-	pendingFlags := make([]Flag, 0, len(flags))
-	seen := map[Flag]struct{}{}
+func DraftInteractiveSteps(flags []Flag) []Flag {
+	steps := make([]Flag, 0, len(flags))
 	for _, flag := range flags {
 		switch flag {
-		case Pin, Cron:
-			if _, ok := seen[flag]; ok {
-				return BinPollCommand{}, fmt2.Errorf("Duplicate flag: %s", flag)
-			}
-			seen[flag] = struct{}{}
-			pendingFlags = append(pendingFlags, flag)
-		default:
-			return BinPollCommand{}, fmt2.Errorf("Unsupported bin_poll flag: %s", flag)
+		case Cron:
+			steps = append(steps, flag)
 		}
 	}
 
-	return BinPollCommand{
-		Poll: Poll{
-			Command: binPollCommandName,
-			Title:   strings2.TrimSpace(body),
-			Options: binPollOptions,
-		},
-		PendingFlags: pendingFlags,
-	}, nil
-}
-
-func parseBinPollCommandFlagsAndBody(input string) ([]Flag, string, error) {
-	input = strings2.TrimSpace(input)
-	if input == "" {
-		return nil, "", errors2.New("Body can't be empty")
-	}
-
-	if input[0] != '[' {
-		return nil, input, nil
-	}
-
-	closeIndex := strings2.Index(input, "]")
-	if closeIndex == -1 {
-		return nil, "", errors2.New("Flags should be closed with ]")
-	}
-
-	flagsPart := strings2.TrimSpace(input[1:closeIndex])
-	body := strings2.TrimSpace(input[closeIndex+1:])
-	if body == "" {
-		return nil, "", errors2.New("Body can't be empty")
-	}
-
-	if flagsPart == "" {
-		return nil, body, nil
-	}
-
-	rawFlags := strings2.Split(flagsPart, ",")
-	flags := make([]Flag, 0, len(rawFlags))
-	for _, rawFlag := range rawFlags {
-		flag := Flag(strings2.ToLower(strings2.TrimSpace(rawFlag)))
-		if flag == "" {
-			return nil, "", errors2.New("Flag can't be empty")
-		}
-		flags = append(flags, flag)
-	}
-
-	return flags, body, nil
+	return steps
 }
 
 func DraftStepPrompt(step Flag) string {
 	switch step {
-	case Pin:
-		return "Закрепить опрос? Ответь Да или Нет."
 	case Cron:
-		return "Пришли cron expression."
+		return "Send cron expression on reply this message"
 	default:
 		return ""
 	}
@@ -153,15 +83,6 @@ func ParseDraftStepAnswer(step Flag, answer string) (bool, string, error) {
 	answer = strings2.TrimSpace(strings2.ToLower(answer))
 
 	switch step {
-	case Pin:
-		switch answer {
-		case "да":
-			return true, "", nil
-		case "нет":
-			return false, "", nil
-		default:
-			return false, "", errors2.New("Ответь Да или Нет")
-		}
 	case Cron:
 		if answer == "" {
 			return false, "", errors2.New("Cron expression can't be empty")
@@ -176,38 +97,111 @@ func ParseDraftStepAnswer(step Flag, answer string) (bool, string, error) {
 }
 
 func BuildFinalPoll(draft *PollDraft) Poll {
-	flags := make([]Flag, 0, 1)
-	if draft.PinEnabled {
-		flags = append(flags, Pin)
+	flags := make([]Flag, 0, len(draft.Flags))
+	for _, flag := range draft.Flags {
+		switch flag {
+		case Cron:
+			continue
+		case Pin:
+			flags = append(flags, flag)
+		default:
+			flags = append(flags, flag)
+		}
 	}
 
 	return Poll{
 		Command: draft.Command,
 		Title:   draft.Title,
-		Options: binPollOptions,
+		Options: draft.Options,
 		Flags:   flags,
 	}
 }
 
-func CreatePollDraft(dto CreatePollDraftDto) (*PollDraft, error) {
-	return db.Execute(func(q *queries.Queries) (*PollDraft, error) {
-		draft, err := q.CreatePollDraft(ctx.Background(), queries.CreatePollDraftParams{
-			ChatID:          dto.ChatID,
-			UserID:          dto.UserID,
-			Command:         dto.Command,
-			Title:           dto.Title,
-			Flags:           FlagsToStrings(dto.PendingFlags),
-			PinEnabled:      dto.PinEnabled,
-			CronExpr:        pgtype.Text{String: dto.CronExpr, Valid: dto.CronExpr != ""},
-			SourceMessageID: dto.SourceMessageID,
-			PromptMessageID: dto.PromptMessageID,
-		})
-		if err != nil {
-			return nil, err
-		}
-
-		return mapPollDraft(&draft), nil
+func StartPollFlow(bot *tgbot.BotAPI, update *tgbot.Update, poll Poll) error {
+	user, err := UpsertUser(UserDto{
+		TelegramLogin: update.Message.From.UserName,
+		FirstName:     update.Message.From.FirstName,
+		LastName:      update.Message.From.LastName,
 	})
+	if err != nil {
+		return err
+	}
+
+	steps := DraftInteractiveSteps(poll.Flags)
+	if len(steps) == 0 {
+		return createPollFromFinalState(bot, update.Message, user.ID, &PollDraft{
+			ChatID:    update.Message.Chat.ID,
+			UserID:    user.ID,
+			Command:   poll.Command,
+			Title:     poll.Title,
+			Options:   poll.Options,
+			Flags:     poll.Flags,
+			StepIndex: 0,
+		})
+	}
+
+	draft, err := CreatePollDraft(CreatePollDraftDto{
+		ChatID:          update.Message.Chat.ID,
+		UserID:          user.ID,
+		Command:         poll.Command,
+		Title:           poll.Title,
+		Options:         poll.Options,
+		Flags:           poll.Flags,
+		SourceMessageID: int64(update.Message.MessageID),
+		StepIndex:       0,
+	})
+	if err != nil {
+		return err
+	}
+
+	prompt, err := SendDraftPrompt(bot, update.Message.Chat.ID, update.Message.MessageID, DraftStepPrompt(steps[0]))
+	if err != nil {
+		_ = DeletePollDraftByID(draft.ID)
+		return err
+	}
+
+	_, err = UpdatePollDraft(UpdatePollDraftDto{
+		ID:              draft.ID,
+		PinEnabled:      draft.PinEnabled,
+		CronExpr:        draft.CronExpr,
+		StepIndex:       0,
+		PromptMessageID: int64(prompt.MessageID),
+	})
+	if err != nil {
+		_ = DeletePollDraftByID(draft.ID)
+		return err
+	}
+
+	return nil
+}
+
+func createPollFromFinalState(bot *tgbot.BotAPI, message *tgbot.Message, userID int64, draft *PollDraft) error {
+	finalPoll := BuildFinalPoll(draft)
+	if draft.CronExpr == "" {
+		return SendPoll(bot, &finalPoll, message)
+	}
+
+	if err := CheckPoll(&finalPoll); err != nil {
+		return err
+	}
+
+	storedPoll, err := CreateStoredPoll(CreateStoredPollDto{
+		ChatID:   draft.ChatID,
+		UserID:   userID,
+		Command:  draft.Command,
+		Poll:     finalPoll,
+		CronExpr: draft.CronExpr,
+	})
+	if err != nil {
+		return err
+	}
+
+	if err := RegisterCronPoll(storedPoll); err != nil {
+		return err
+	}
+
+	_, err = SendDraftPrompt(bot, message.Chat.ID, message.MessageID, fmt2.Sprintf("Cron poll #%d was created", storedPoll.ID))
+	return err
 }
 
 func GetPollDraftByPromptMessageID(chatID int64, userID int64, promptMessageID int64) (*PollDraft, error) {
@@ -228,13 +222,36 @@ func GetPollDraftByPromptMessageID(chatID int64, userID int64, promptMessageID i
 	})
 }
 
+func CreatePollDraft(dto CreatePollDraftDto) (*PollDraft, error) {
+	return db.Execute(func(q *queries.Queries) (*PollDraft, error) {
+		draft, err := q.CreatePollDraft(ctx.Background(), queries.CreatePollDraftParams{
+			ChatID:          dto.ChatID,
+			UserID:          dto.UserID,
+			Command:         dto.Command,
+			Title:           dto.Title,
+			Options:         dto.Options,
+			Flags:           FlagsToStrings(dto.Flags),
+			PinEnabled:      dto.PinEnabled,
+			CronExpr:        pgtype.Text{String: dto.CronExpr, Valid: dto.CronExpr != ""},
+			StepIndex:       dto.StepIndex,
+			SourceMessageID: dto.SourceMessageID,
+			PromptMessageID: dto.PromptMessageID,
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		return mapPollDraft(&draft), nil
+	})
+}
+
 func UpdatePollDraft(dto UpdatePollDraftDto) (*PollDraft, error) {
 	return db.Execute(func(q *queries.Queries) (*PollDraft, error) {
 		draft, err := q.UpdatePollDraft(ctx.Background(), queries.UpdatePollDraftParams{
 			ID:              dto.ID,
-			Flags:           FlagsToStrings(dto.PendingFlags),
 			PinEnabled:      dto.PinEnabled,
 			CronExpr:        pgtype.Text{String: dto.CronExpr, Valid: dto.CronExpr != ""},
+			StepIndex:       dto.StepIndex,
 			PromptMessageID: dto.PromptMessageID,
 		})
 		if err != nil {
@@ -287,9 +304,9 @@ func SendDraftPrompt(bot *tgbot.BotAPI, chatID int64, replyToMessageID int, text
 	return &message, nil
 }
 
-func TryHandleBinPollDraftReply(bot *tgbot.BotAPI, update *tgbot.Update) (bool, error) {
+func TryHandlePollDraftReply(bot *tgbot.BotAPI, update *tgbot.Update) (bool, error) {
 	message := update.Message
-	if message == nil || message.ReplyToMessage == nil || message.From == nil {
+	if message == nil || message.From == nil || message.ReplyToMessage == nil {
 		return false, nil
 	}
 
@@ -317,18 +334,17 @@ func TryHandleBinPollDraftReply(bot *tgbot.BotAPI, update *tgbot.Update) (bool, 
 		return true, errors2.New("Poll draft expired, start again")
 	}
 
-	if len(draft.PendingFlags) == 0 {
+	steps := DraftInteractiveSteps(draft.Flags)
+	if int(draft.StepIndex) >= len(steps) {
 		if err := DeletePollDraftByID(draft.ID); err != nil {
 			return true, err
 		}
 		return true, errors2.New("Poll draft is already completed")
 	}
 
-	step := draft.PendingFlags[0]
-	remaining := draft.PendingFlags[1:]
+	step := steps[draft.StepIndex]
 	pinEnabled := draft.PinEnabled
 	cronExpr := draft.CronExpr
-
 	stepPinEnabled, stepCronExpr, err := ParseDraftStepAnswer(step, message.Text)
 	if err != nil {
 		return true, err
@@ -341,17 +357,18 @@ func TryHandleBinPollDraftReply(bot *tgbot.BotAPI, update *tgbot.Update) (bool, 
 		cronExpr = stepCronExpr
 	}
 
-	if len(remaining) > 0 {
-		nextPrompt, err := SendDraftPrompt(bot, message.Chat.ID, message.MessageID, DraftStepPrompt(remaining[0]))
+	nextStepIndex := draft.StepIndex + 1
+	if int(nextStepIndex) < len(steps) {
+		nextPrompt, err := SendDraftPrompt(bot, message.Chat.ID, message.MessageID, DraftStepPrompt(steps[nextStepIndex]))
 		if err != nil {
 			return true, err
 		}
 
 		_, err = UpdatePollDraft(UpdatePollDraftDto{
 			ID:              draft.ID,
-			PendingFlags:    remaining,
 			PinEnabled:      pinEnabled,
 			CronExpr:        cronExpr,
+			StepIndex:       nextStepIndex,
 			PromptMessageID: int64(nextPrompt.MessageID),
 		})
 		if err != nil {
@@ -362,46 +379,15 @@ func TryHandleBinPollDraftReply(bot *tgbot.BotAPI, update *tgbot.Update) (bool, 
 		return true, nil
 	}
 
-	draft.PendingFlags = remaining
 	draft.PinEnabled = pinEnabled
 	draft.CronExpr = cronExpr
+	draft.StepIndex = nextStepIndex
 
-	finalPoll := BuildFinalPoll(draft)
-	if draft.CronExpr == "" {
-		if err := SendPoll(bot, &finalPoll, message); err != nil {
-			return true, err
-		}
-		if err := DeletePollDraftByID(draft.ID); err != nil {
-			return true, err
-		}
-		return true, nil
-	}
-
-	if err := CheckPoll(&finalPoll); err != nil {
-		return true, err
-	}
-
-	storedPoll, err := CreateStoredPoll(CreateStoredPollDto{
-		ChatID:   draft.ChatID,
-		UserID:   user.ID,
-		Command:  draft.Command,
-		Poll:     finalPoll,
-		CronExpr: draft.CronExpr,
-	})
-	if err != nil {
-		return true, err
-	}
-
-	if err := RegisterCronPoll(storedPoll); err != nil {
+	if err := createPollFromFinalState(bot, message, user.ID, draft); err != nil {
 		return true, err
 	}
 
 	if err := DeletePollDraftByID(draft.ID); err != nil {
-		return true, err
-	}
-
-	_, err = SendDraftPrompt(bot, message.Chat.ID, message.MessageID, fmt2.Sprintf("Cron poll #%d was created", storedPoll.ID))
-	if err != nil {
 		return true, err
 	}
 
@@ -420,9 +406,11 @@ func mapPollDraft(dbDraft *queries.PollDraft) *PollDraft {
 		UserID:          dbDraft.UserID,
 		Command:         dbDraft.Command,
 		Title:           dbDraft.Title,
-		PendingFlags:    StringsToFlags(dbDraft.Flags),
+		Options:         dbDraft.Options,
+		Flags:           StringsToFlags(dbDraft.Flags),
 		PinEnabled:      dbDraft.PinEnabled,
 		CronExpr:        cronExpr,
+		StepIndex:       dbDraft.StepIndex,
 		SourceMessageID: dbDraft.SourceMessageID,
 		PromptMessageID: dbDraft.PromptMessageID,
 		CreatedAt:       dbDraft.CreatedAt.Time,

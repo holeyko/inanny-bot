@@ -1,8 +1,6 @@
 package command
 
 import (
-	"fmt"
-
 	tgbot "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	polls "github.com/holeyko/innany-tgbot/internal/inanny/features/polls"
 )
@@ -16,19 +14,13 @@ func (handler PollCommandHandler) Handle(bot *tgbot.BotAPI, update *tgbot.Update
 }
 
 func handlePollCommand(bot *tgbot.BotAPI, update *tgbot.Update, command string, options []string) error {
-	pollCommand, err := polls.ParsePollCommand(update.Message.CommandArguments())
+	pollCommand, err := polls.ParsePollCommand(update.Message.CommandArguments(), options)
 	if err != nil {
 		return err
 	}
 
-	if options != nil {
-		pollCommand.Poll.Options = options
-	}
-
-	if pollCommand.CronExpr == "" {
-		return polls.SendPoll(bot, &pollCommand.Poll, update.Message)
-	}
-	return fmt.Errorf("Cron poll creation moved to /bin_poll [cron]")
+	pollCommand.Poll.Command = command
+	return polls.StartPollFlow(bot, update, pollCommand.Poll)
 }
 
 func NewPollCommandHandler() PollCommandHandler {

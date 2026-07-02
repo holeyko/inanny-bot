@@ -4,9 +4,7 @@ import (
 	tgbot "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
-var (
-	tpOptions = []string{"Да", "Нет", "Тык"}
-)
+var tpOptions = []string{"Да", "Нет", "Тык"}
 
 type TPCommandHandler struct {
 	CommandHandler
@@ -18,8 +16,6 @@ func (handler TPCommandHandler) Handle(bot *tgbot.BotAPI, update *tgbot.Update) 
 
 func NewTPCommandHandler() TPCommandHandler {
 	return TPCommandHandler{
-		CommandHandler: CommandHandler{
-			command: "tp",
-		},
+		CommandHandler: CommandHandler{command: "tp"},
 	}
 }

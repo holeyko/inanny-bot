@@ -34,8 +34,7 @@ type Poll struct {
 }
 
 type PollCommand struct {
-	Poll     Poll
-	CronExpr string
+	Poll Poll
 }
 
 type StoredPoll struct {
@@ -45,25 +44,18 @@ type StoredPoll struct {
 }
 
 func ParsePoll(input string) (Poll, error) {
-	command, err := ParsePollCommand(input)
+	command, err := ParsePollCommand(input, nil)
 	return command.Poll, err
 }
 
-func ParsePollCommand(input string) (PollCommand, error) {
+func ParsePollCommand(input string, fixedOptions []string) (PollCommand, error) {
 	input = strings.TrimSpace(input)
 
 	flags, remain, _ := parseFlags(input)
-	cronExpr, remain, err := parseCronExpression(strings.TrimSpace(remain))
+	title, options, err := parseTitleAndOptions(strings.TrimSpace(remain), fixedOptions)
 	if err != nil {
 		return PollCommand{}, err
 	}
-
-	title, remain, err := parseTitle(remain)
-	if err != nil {
-		return PollCommand{}, err
-	}
-
-	options, _, _ := parseOptions(remain)
 
 	return PollCommand{
 		Poll: Poll{
@@ -71,30 +63,7 @@ func ParsePollCommand(input string) (PollCommand, error) {
 			Options: options,
 			Flags:   flags,
 		},
-		CronExpr: cronExpr,
 	}, nil
-}
-
-func parseCronExpression(input string) (string, string, error) {
-	if len(input) == 0 || string(input[0]) != "{" {
-		return "", input, nil
-	}
-
-	closeIndex := strings.Index(input, "}")
-	if closeIndex == -1 {
-		return "", input, errors.New("Cron expression should be closed with }")
-	}
-
-	cronExpr := strings.TrimSpace(input[1:closeIndex])
-	if cronExpr == "" {
-		return "", input, errors.New("Cron expression can't be empty")
-	}
-
-	if err := ValidateCronExpr(cronExpr); err != nil {
-		return "", input, err
-	}
-
-	return cronExpr, strings.TrimSpace(input[closeIndex+1:]), nil
 }
 
 func ValidateCronExpr(cronExpr string) error {
@@ -111,6 +80,29 @@ func ValidateCronExpr(cronExpr string) error {
 	}
 
 	return nil
+}
+
+func parseTitleAndOptions(input string, fixedOptions []string) (string, []string, error) {
+	lines := strings.Split(input, "\n")
+	if len(lines) == 0 || strings.TrimSpace(lines[0]) == "" {
+		return "", nil, errors.New("Title can't be empty")
+	}
+
+	title := strings.TrimSpace(lines[0])
+	if len(fixedOptions) > 0 {
+		return title, fixedOptions, nil
+	}
+
+	options := make([]string, 0, len(lines)-1)
+	for _, line := range lines[1:] {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		options = append(options, line)
+	}
+
+	return title, options, nil
 }
 
 func parseFlags(input string) ([]Flag, string, error) {
@@ -141,34 +133,6 @@ func parseFlags(input string) ([]Flag, string, error) {
 	}
 
 	return flags, input[closeFlagIndex+1:], nil
-}
-
-func parseTitle(input string) (string, string, error) {
-	titleDelimeterIndex := strings.Index(input, titleDelimeter)
-	if titleDelimeterIndex == -1 {
-		return input, "", nil
-	}
-
-	title := input[:titleDelimeterIndex]
-	if title == "" {
-		return "", "", errors.New("Title can't be empty")
-	}
-
-	return title, input[titleDelimeterIndex+1:], nil
-}
-
-func parseOptions(input string) ([]string, string, error) {
-	options := []string{}
-	for _, option := range strings.Split(input, optionDelimeter) {
-		option = strings.TrimSpace(option)
-		if len(option) == 0 {
-			continue
-		}
-
-		options = append(options, option)
-	}
-
-	return options, "", nil
 }
 
 func FlagsToStrings(flags []Flag) []string {

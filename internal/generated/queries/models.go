@@ -36,9 +36,11 @@ type PollDraft struct {
 	UserID          int64
 	Command         string
 	Title           string
+	Options         []string
 	Flags           []string
 	PinEnabled      bool
 	CronExpr        pgtype.Text
+	StepIndex       int32
 	SourceMessageID int64
 	PromptMessageID int64
 	CreatedAt       pgtype.Timestamp

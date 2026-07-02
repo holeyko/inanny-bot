@@ -12,9 +12,9 @@ import (
 )
 
 const createPollDraft = `-- name: CreatePollDraft :one
-INSERT INTO poll_drafts (chat_id, user_id, command, title, flags, pin_enabled, cron_expr, source_message_id, prompt_message_id)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-RETURNING id, chat_id, user_id, command, title, flags, pin_enabled, cron_expr, source_message_id, prompt_message_id, created_at, updated_at
+INSERT INTO poll_drafts (chat_id, user_id, command, title, options, flags, pin_enabled, cron_expr, step_index, source_message_id, prompt_message_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+RETURNING id, chat_id, user_id, command, title, options, flags, pin_enabled, cron_expr, step_index, source_message_id, prompt_message_id, created_at, updated_at
 `
 
 type CreatePollDraftParams struct {
@@ -22,9 +22,11 @@ type CreatePollDraftParams struct {
 	UserID          int64
 	Command         string
 	Title           string
+	Options         []string
 	Flags           []string
 	PinEnabled      bool
 	CronExpr        pgtype.Text
+	StepIndex       int32
 	SourceMessageID int64
 	PromptMessageID int64
 }
@@ -35,9 +37,11 @@ func (q *Queries) CreatePollDraft(ctx context.Context, arg CreatePollDraftParams
 		arg.UserID,
 		arg.Command,
 		arg.Title,
+		arg.Options,
 		arg.Flags,
 		arg.PinEnabled,
 		arg.CronExpr,
+		arg.StepIndex,
 		arg.SourceMessageID,
 		arg.PromptMessageID,
 	)
@@ -48,9 +52,11 @@ func (q *Queries) CreatePollDraft(ctx context.Context, arg CreatePollDraftParams
 		&i.UserID,
 		&i.Command,
 		&i.Title,
+		&i.Options,
 		&i.Flags,
 		&i.PinEnabled,
 		&i.CronExpr,
+		&i.StepIndex,
 		&i.SourceMessageID,
 		&i.PromptMessageID,
 		&i.CreatedAt,
@@ -86,7 +92,7 @@ func (q *Queries) DeletePollDraftByID(ctx context.Context, id int64) (int64, err
 }
 
 const getPollDraftByPromptMessageID = `-- name: GetPollDraftByPromptMessageID :one
-SELECT id, chat_id, user_id, command, title, flags, pin_enabled, cron_expr, source_message_id, prompt_message_id, created_at, updated_at
+SELECT id, chat_id, user_id, command, title, options, flags, pin_enabled, cron_expr, step_index, source_message_id, prompt_message_id, created_at, updated_at
 FROM poll_drafts
 WHERE chat_id = $1 AND user_id = $2 AND prompt_message_id = $3
 `
@@ -106,9 +112,11 @@ func (q *Queries) GetPollDraftByPromptMessageID(ctx context.Context, arg GetPoll
 		&i.UserID,
 		&i.Command,
 		&i.Title,
+		&i.Options,
 		&i.Flags,
 		&i.PinEnabled,
 		&i.CronExpr,
+		&i.StepIndex,
 		&i.SourceMessageID,
 		&i.PromptMessageID,
 		&i.CreatedAt,
@@ -119,29 +127,29 @@ func (q *Queries) GetPollDraftByPromptMessageID(ctx context.Context, arg GetPoll
 
 const updatePollDraft = `-- name: UpdatePollDraft :one
 UPDATE poll_drafts
-SET flags = $2,
-    pin_enabled = $3,
-    cron_expr = $4,
+SET pin_enabled = $2,
+    cron_expr = $3,
+    step_index = $4,
     prompt_message_id = $5,
     updated_at = NOW()
 WHERE id = $1
-RETURNING id, chat_id, user_id, command, title, flags, pin_enabled, cron_expr, source_message_id, prompt_message_id, created_at, updated_at
+RETURNING id, chat_id, user_id, command, title, options, flags, pin_enabled, cron_expr, step_index, source_message_id, prompt_message_id, created_at, updated_at
 `
 
 type UpdatePollDraftParams struct {
 	ID              int64
-	Flags           []string
 	PinEnabled      bool
 	CronExpr        pgtype.Text
+	StepIndex       int32
 	PromptMessageID int64
 }
 
 func (q *Queries) UpdatePollDraft(ctx context.Context, arg UpdatePollDraftParams) (PollDraft, error) {
 	row := q.db.QueryRow(ctx, updatePollDraft,
 		arg.ID,
-		arg.Flags,
 		arg.PinEnabled,
 		arg.CronExpr,
+		arg.StepIndex,
 		arg.PromptMessageID,
 	)
 	var i PollDraft
@@ -151,9 +159,11 @@ func (q *Queries) UpdatePollDraft(ctx context.Context, arg UpdatePollDraftParams
 		&i.UserID,
 		&i.Command,
 		&i.Title,
+		&i.Options,
 		&i.Flags,
 		&i.PinEnabled,
 		&i.CronExpr,
+		&i.StepIndex,
 		&i.SourceMessageID,
 		&i.PromptMessageID,
 		&i.CreatedAt,
