@@ -30,7 +30,7 @@ jobs:
 
   rm-previous-docker-resources:
     runs-on: self-hosted
-    needs: [build-image, db-migrate]
+    needs: [build-image]
     steps:
     - name: Remove existing container
       run: make docker-clean
