@@ -1,0 +1,88 @@
+name: Deploy Telegram Bot
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+# Every job runs on the same self-hosted runner machine, so Docker images,
+# containers, networks, and volumes are shared between jobs.
+jobs:
+  build:
+    name: Build bot image
+    runs-on: self-hosted
+    env:
+      IMAGE_VERSION: ${{ github.sha }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: make docker-build
+
+  db-bootstrap:
+    name: Ensure database is running
+    runs-on: self-hosted
+    env:
+      DB_USER: ${{ secrets.DB_USER }}
+      DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+      DB_NAME: ${{ secrets.DB_NAME }}
+      DB_PORT: ${{ secrets.DB_PORT || '5432' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Start PostgreSQL if needed
+        run: make db-bootstrap
+
+  db-migrate:
+    name: Run database migrations
+    runs-on: self-hosted
+    needs:
+      - build
+      - db-bootstrap
+    env:
+      DB_USER: ${{ secrets.DB_USER }}
+      DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+      DB_NAME: ${{ secrets.DB_NAME }}
+      DB_PORT: ${{ secrets.DB_PORT || '5432' }}
+      # Liquibase runs on the host, so it connects through the published DB port.
+      DB_MIGRATE_HOST: localhost
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Apply Liquibase migrations
+        run: make db-migrate
+
+  rm-previous-containers:
+    name: Remove previous bot container
+    runs-on: self-hosted
+    needs: db-migrate
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Stop and remove old bot container
+        run: make docker-clean
+
+  run-tg-bot:
+    name: Run Telegram bot
+    runs-on: self-hosted
+    needs: rm-previous-containers
+    env:
+      IMAGE_VERSION: ${{ github.sha }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      DB_USER: ${{ secrets.DB_USER }}
+      DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+      DB_NAME: ${{ secrets.DB_NAME }}
+      # The bot runs inside Docker, so it reaches Postgres by container name
+      # over the internal Docker network created by make db-bootstrap.
+      DB_HOST: inanny-postgres
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Start new bot container
+        run: make docker-run
