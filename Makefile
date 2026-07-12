@@ -11,7 +11,7 @@ IMAGE_VERSION ?= latest
 DB_PORT ?= 5432
 DB_HOST ?= $(DB_CONTAINER)
 DB_MIGRATE_HOST ?= localhost
-POSTGRES_IMAGE ?= postgres:16-alpine
+POSTGRES_IMAGE ?= postgres:16
 
 export TELEGRAM_BOT_TOKEN
 export DB_USER
@@ -54,13 +54,16 @@ db-bootstrap: docker-network
 
 	@docker volume inspect $(DB_VOLUME) > /dev/null 2>&1 || \
 		docker volume create $(DB_VOLUME) > /dev/null
-	@if docker ps --format '{{.Names}}' | grep -qx '$(DB_CONTAINER)'; then \
+	@status=$$(docker inspect -f '{{.State.Status}}' $(DB_CONTAINER) 2> /dev/null || true); \
+	if [ "$$status" = "running" ]; then \
 		echo "PostgreSQL container is already running; leaving it untouched."; \
-	elif docker ps -a --format '{{.Names}}' | grep -qx '$(DB_CONTAINER)'; then \
-		echo "PostgreSQL container exists but is stopped; starting it."; \
-		docker start $(DB_CONTAINER) > /dev/null; \
 	else \
+		if [ -n "$$status" ]; then \
+			echo "PostgreSQL container status is '$$status'; recreating container and preserving volume."; \
+			docker rm -f $(DB_CONTAINER) > /dev/null; \
+		fi; \
 		echo "Creating PostgreSQL container with persistent volume."; \
+		docker pull $(POSTGRES_IMAGE) > /dev/null; \
 		docker run -d \
 			--name $(DB_CONTAINER) \
 			--restart unless-stopped \
