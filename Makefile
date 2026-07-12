@@ -14,6 +14,7 @@ DB_MIGRATE_HOST ?= localhost
 POSTGRES_IMAGE ?= postgres:16
 
 export TELEGRAM_BOT_TOKEN
+export DEBUG
 export DB_USER
 export DB_PASSWORD
 export DB_NAME
@@ -104,12 +105,18 @@ docker-run: docker-network
 		--restart unless-stopped \
 		--network $(DOCKER_NETWORK) \
 		-e TELEGRAM_BOT_TOKEN \
+		-e DEBUG \
 		-e DB_HOST=$(DB_HOST) \
 		-e DB_USER \
 		-e DB_PASSWORD \
 		-e DB_NAME \
 		--name $(DOCKER_CONTAINER) \
 		$(DOCKER_IMAGE):$(IMAGE_VERSION)
+	@sleep 1
+	@echo "Bot container status after startup:"
+	@docker ps -a --filter name=$(DOCKER_CONTAINER)
+	@echo "Bot container logs after startup:"
+	@docker logs --tail 100 $(DOCKER_CONTAINER) || true
 
 docker-bar: docker-build docker-clean docker-run
 	

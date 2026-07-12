@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 
 	tgbot "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	commands "github.com/holeyko/innany-tgbot/internal/inanny/bot/handlers/commands"
@@ -11,11 +12,16 @@ import (
 )
 
 func StartBot() {
+	debugLog("starting bot bootstrap")
 	bot := createBot()
+	debugLog("telegram bot client created for account %q", bot.Self.UserName)
 	if err := polls.StartScheduler(bot); err != nil {
 		log.Println("Cron poll scheduler started without persisted polls:", err)
+	} else {
+		debugLog("cron poll scheduler started")
 	}
 	polls.StartDraftCleanup()
+	debugLog("poll draft cleanup started")
 	startHandeRequests(bot)
 }
 
@@ -24,6 +30,7 @@ func createBot() *tgbot.BotAPI {
 	if botToken == "" {
 		log.Fatal("Can't find TELEGRAM_BOT_TOKEN environment variable")
 	}
+	debugLog("required environment variables present: TELEGRAM_BOT_TOKEN=%t DB_HOST=%t DB_USER=%t DB_NAME=%t", botToken != "", os.Getenv("DB_HOST") != "", os.Getenv("DB_USER") != "", os.Getenv("DB_NAME") != "")
 
 	bot, err := tgbot.NewBotAPI(botToken)
 	if err != nil {
@@ -43,8 +50,10 @@ func buildUpdateConfig() tgbot.UpdateConfig {
 func startHandeRequests(bot *tgbot.BotAPI) {
 	updates := bot.GetUpdatesChan(buildUpdateConfig())
 	log.Println("Telegram bot Innany was started")
+	debugLog("telegram update polling started")
 
 	for update := range updates {
+		debugLog("received update id=%d has_message=%t has_callback=%t", update.UpdateID, update.Message != nil, update.CallbackQuery != nil)
 		go handleRequest(bot, &update)
 	}
 }
@@ -90,6 +99,7 @@ func tryHandleCallback(bot *tgbot.BotAPI, update *tgbot.Update) (err error) {
 func handleCommand(bot *tgbot.BotAPI, update *tgbot.Update) (err error) {
 	message := update.Message
 	command := message.Command()
+	debugLog("handling command %q for chat_id=%d", command, message.Chat.ID)
 
 	if handler := commands.FindCommandHandler(command); handler != nil {
 		err = handler.Handle(bot, update)
@@ -111,4 +121,10 @@ func handleError(bot *tgbot.BotAPI, update *tgbot.Update, err error) {
 func sendErrorResponse(bot *tgbot.BotAPI, chatId int64, err error) {
 	messageConfig := tgbot.NewMessage(chatId, err.Error())
 	bot.Send(messageConfig)
+}
+
+func debugLog(format string, args ...any) {
+	if strings.EqualFold(os.Getenv("DEBUG"), "true") {
+		log.Printf("DEBUG: "+format, args...)
+	}
 }
