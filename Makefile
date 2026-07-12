@@ -73,8 +73,20 @@ db-bootstrap: docker-network
 			$(POSTGRES_IMAGE) > /dev/null; \
 	fi
 	@echo "Wait for PostgreSQL to accept connections..."
-	@until docker exec $(DB_CONTAINER) pg_isready -U $(DB_USER) -d $(DB_NAME) > /dev/null 2>&1; do \
+	@timeout=60; elapsed=0; \
+	until docker exec $(DB_CONTAINER) pg_isready -U $(DB_USER) -d $(DB_NAME) > /dev/null 2>&1; do \
+		if [ $$elapsed -ge $$timeout ]; then \
+			echo "PostgreSQL did not become ready after $${timeout}s."; \
+			echo "Docker containers:"; \
+			docker ps -a; \
+			echo "PostgreSQL container details:"; \
+			docker inspect $(DB_CONTAINER) || true; \
+			echo "PostgreSQL logs:"; \
+			docker logs --tail 200 $(DB_CONTAINER) || true; \
+			exit 1; \
+		fi; \
 		sleep 2; \
+		elapsed=$$((elapsed + 2)); \
 	done
 
 docker-build:

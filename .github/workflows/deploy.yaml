@@ -33,8 +33,28 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # Temporary diagnostics for the self-hosted runner. Remove after the
+      # PostgreSQL bootstrap issue is confirmed fixed.
+      - name: Temporary Docker diagnostics before DB bootstrap
+        run: |
+          docker ps -a
+          docker volume ls
+          docker network ls
+          docker logs inanny-postgres || true
+
       - name: Start PostgreSQL if needed
         run: make db-bootstrap
+
+      # Keep this step temporary. It helps confirm whether the DB container,
+      # volume, and network are in the expected state after bootstrap.
+      - name: Temporary Docker diagnostics after DB bootstrap
+        if: always()
+        run: |
+          docker ps -a
+          docker volume ls
+          docker network inspect inanny-network || true
+          docker inspect inanny-postgres || true
+          docker logs inanny-postgres || true
 
   db-migrate:
     name: Run database migrations
