@@ -112,7 +112,7 @@ docker-run: docker-network
 		-e DB_NAME \
 		--name $(DOCKER_CONTAINER) \
 		$(DOCKER_IMAGE):$(IMAGE_VERSION)
-	@sleep 1
+	@sleep 5
 	@echo "Bot container status after startup:"
 	@docker ps -a --filter name=$(DOCKER_CONTAINER)
 	@echo "Bot container logs after startup:"
