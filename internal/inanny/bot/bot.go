@@ -8,6 +8,7 @@ import (
 
 	tgbot "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	commands "github.com/holeyko/innany-tgbot/internal/inanny/bot/handlers/commands"
+	customcommands "github.com/holeyko/innany-tgbot/internal/inanny/features/customcommands"
 	polls "github.com/holeyko/innany-tgbot/internal/inanny/features/polls"
 )
 
@@ -22,6 +23,8 @@ func StartBot() {
 	}
 	polls.StartDraftCleanup()
 	debugLog("poll draft cleanup started")
+	customcommands.StartDraftCleanup()
+	debugLog("custom command draft cleanup started")
 	startHandeRequests(bot)
 }
 
@@ -75,6 +78,10 @@ func handleRequest(bot *tgbot.BotAPI, update *tgbot.Update) {
 
 func tryHandleMessage(bot *tgbot.BotAPI, update *tgbot.Update) (err error) {
 	if message := update.Message; message != nil {
+		if handled, commandDraftErr := commands.TryHandleCustomCommandDraftReply(bot, update); handled || commandDraftErr != nil {
+			return commandDraftErr
+		}
+
 		if handled, draftErr := polls.TryHandlePollDraftReply(bot, update); handled || draftErr != nil {
 			return draftErr
 		}
@@ -103,6 +110,8 @@ func handleCommand(bot *tgbot.BotAPI, update *tgbot.Update) (err error) {
 
 	if handler := commands.FindCommandHandler(command); handler != nil {
 		err = handler.Handle(bot, update)
+	} else if handled, customErr := commands.HandleCustomCommand(bot, update, command); handled {
+		err = customErr
 	} else {
 		err = fmt.Errorf("Command %s doesn't exist", command)
 	}

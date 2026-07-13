@@ -47,6 +47,25 @@ type PollDraft struct {
 	UpdatedAt       pgtype.Timestamp
 }
 
+type CustomCommand struct {
+	ID            int64
+	ChatID        int64
+	UserID        int64
+	Name          string
+	TargetCommand string
+	Body          string
+	CreatedAt     pgtype.Timestamp
+	UpdatedAt     pgtype.Timestamp
+}
+
+type CustomCommandDraft struct {
+	ID              int64
+	ChatID          int64
+	UserID          int64
+	PromptMessageID int64
+	CreatedAt       pgtype.Timestamp
+}
+
 type User struct {
 	ID            int64
 	TelegramLogin string
