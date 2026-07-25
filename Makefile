@@ -10,8 +10,8 @@ APP = app
 IMAGE_VERSION ?= latest
 DB_PORT ?= 5432
 DB_HOST ?= $(DB_CONTAINER)
-DB_MIGRATE_HOST ?= localhost
 POSTGRES_IMAGE ?= postgres:16
+LIQUIBASE_IMAGE ?= liquibase/liquibase:4.31
 
 export TELEGRAM_BOT_TOKEN
 export DEBUG
@@ -120,14 +120,18 @@ docker-run: docker-network
 
 docker-bar: docker-build docker-clean docker-run
 	
-db-migrate:
-	liquibase \
-		--url="jdbc:postgresql://${DB_MIGRATE_HOST}:$(DB_PORT)/${DB_NAME}" \
-		--username="${DB_USER}" \
-		--password="${DB_PASSWORD}" \
-		--changeLogFile=migrate/changelog.xml \
-		--classpath=libs/postgresql-42.7.5.jar \
-		update
+db-migrate: docker-network
+	@LIQUIBASE_COMMAND_URL="jdbc:postgresql://$(DB_CONTAINER):5432/$(DB_NAME)" \
+	LIQUIBASE_COMMAND_USERNAME="$(DB_USER)" \
+	LIQUIBASE_COMMAND_PASSWORD="$(DB_PASSWORD)" \
+	docker run --rm \
+		--network "$(DOCKER_NETWORK)" \
+		--mount type=bind,src="$(CURDIR)/migrate",dst=/liquibase/migrate,readonly \
+		-e LIQUIBASE_COMMAND_URL \
+		-e LIQUIBASE_COMMAND_USERNAME \
+		-e LIQUIBASE_COMMAND_PASSWORD \
+		$(LIQUIBASE_IMAGE) \
+		--changelog-file=/liquibase/migrate/changelog.xml update
 
 deploy:
 	$(MAKE) docker-build
