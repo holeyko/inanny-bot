@@ -131,6 +131,7 @@ db-migrate: docker-network
 		-e LIQUIBASE_COMMAND_USERNAME \
 		-e LIQUIBASE_COMMAND_PASSWORD \
 		$(LIQUIBASE_IMAGE) \
+		--search-path=/liquibase/changelog \
 		--changelog-file=changelog.xml update
 
 deploy:
