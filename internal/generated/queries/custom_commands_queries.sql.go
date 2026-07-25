@@ -198,7 +198,7 @@ func (q *Queries) ListCustomCommandsByChat(ctx context.Context, chatID int64) ([
 		return nil, err
 	}
 	defer rows.Close()
-	items := []CustomCommand{}
+	var items []CustomCommand
 	for rows.Next() {
 		var i CustomCommand
 		if err := rows.Scan(

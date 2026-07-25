@@ -3,11 +3,14 @@ package command
 import (
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 
 	tgbot "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	handlers "github.com/holeyko/innany-tgbot/internal/inanny/bot/handlers"
+	ai "github.com/holeyko/innany-tgbot/internal/inanny/features/ai"
 	customcommands "github.com/holeyko/innany-tgbot/internal/inanny/features/customcommands"
+	messages "github.com/holeyko/innany-tgbot/internal/inanny/features/messages"
 )
 
 const maxCustomCommandDepth = 10
@@ -28,6 +31,36 @@ var commandHandlers = [...]handlers.TgUpdateHandler[string]{
 	NewPollsCommandHandler(),
 	NewCommandsCommandHandler(),
 	NewHelloCommandHandler(),
+	NewDefaultSummarizeCommandHandler(),
+}
+
+func NewDefaultSummarizeCommandHandler() SummarizeCommandHandler {
+	return NewSummarizeCommandHandler(
+		newDefaultAIClient(),
+		messages.NewRepository(),
+	)
+}
+
+func newDefaultAIClient() ai.AIClient {
+	if apiKey := firstNonEmptyEnv("GOOGLE_AI_STUDIO_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY"); apiKey != "" {
+		return ai.NewGoogleAIClient(apiKey)
+	}
+	if token := os.Getenv("CHATGPT_API_TOKEN"); token != "" {
+		return ai.NewChatGPTClient(token)
+	}
+	if token := os.Getenv("OPENAI_API_KEY"); token != "" {
+		return ai.NewChatGPTClient(token)
+	}
+	return ai.NewDeepSeekClient(os.Getenv("DEEPSEEK_API_TOKEN"))
+}
+
+func firstNonEmptyEnv(names ...string) string {
+	for _, name := range names {
+		if value := os.Getenv(name); value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func FindCommandHandler(command string) handlers.TgUpdateHandler[string] {

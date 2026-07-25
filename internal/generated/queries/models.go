@@ -8,6 +8,35 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type CustomCommand struct {
+	ID            int64
+	ChatID        int64
+	UserID        int64
+	Name          string
+	TargetCommand string
+	Body          string
+	CreatedAt     pgtype.Timestamp
+	UpdatedAt     pgtype.Timestamp
+}
+
+type CustomCommandDraft struct {
+	ID              int64
+	ChatID          int64
+	UserID          int64
+	PromptMessageID int64
+	CreatedAt       pgtype.Timestamp
+}
+
+type Message struct {
+	ChatID           int64
+	MessageID        int64
+	Sender           string
+	Text             string
+	ReplyToMessageID pgtype.Int8
+	SentAt           pgtype.Timestamp
+	CreatedAt        pgtype.Timestamp
+}
+
 type Notification struct {
 	ID        int64
 	ChatID    int64
@@ -45,25 +74,6 @@ type PollDraft struct {
 	PromptMessageID int64
 	CreatedAt       pgtype.Timestamp
 	UpdatedAt       pgtype.Timestamp
-}
-
-type CustomCommand struct {
-	ID            int64
-	ChatID        int64
-	UserID        int64
-	Name          string
-	TargetCommand string
-	Body          string
-	CreatedAt     pgtype.Timestamp
-	UpdatedAt     pgtype.Timestamp
-}
-
-type CustomCommandDraft struct {
-	ID              int64
-	ChatID          int64
-	UserID          int64
-	PromptMessageID int64
-	CreatedAt       pgtype.Timestamp
 }
 
 type User struct {

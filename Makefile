@@ -14,6 +14,12 @@ POSTGRES_IMAGE ?= postgres:16
 LIQUIBASE_IMAGE ?= liquibase/liquibase:4.31
 
 export TELEGRAM_BOT_TOKEN
+export DEEPSEEK_API_TOKEN
+export CHATGPT_API_TOKEN
+export OPENAI_API_KEY
+export GOOGLE_AI_STUDIO_API_KEY
+export GEMINI_API_KEY
+export GOOGLE_API_KEY
 export DEBUG
 export DB_USER
 export DB_PASSWORD
@@ -70,7 +76,7 @@ db-bootstrap: docker-network
 			--restart unless-stopped \
 			--network $(DOCKER_NETWORK) \
 			-v $(DB_VOLUME):/var/lib/postgresql/data \
-			-p $(DB_PORT):5432 \
+			-p $(DB_PORT) \
 			-e POSTGRES_USER \
 			-e POSTGRES_PASSWORD \
 			-e POSTGRES_DB \
@@ -105,6 +111,12 @@ docker-run: docker-network
 		--restart unless-stopped \
 		--network $(DOCKER_NETWORK) \
 		-e TELEGRAM_BOT_TOKEN \
+		-e DEEPSEEK_API_TOKEN \
+		-e CHATGPT_API_TOKEN \
+		-e OPENAI_API_KEY \
+		-e GOOGLE_AI_STUDIO_API_KEY \
+		-e GEMINI_API_KEY \
+		-e GOOGLE_API_KEY \
 		-e DEBUG \
 		-e DB_HOST=$(DB_HOST) \
 		-e DB_USER \

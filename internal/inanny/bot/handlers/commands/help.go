@@ -17,6 +17,7 @@ func (handler HelpCommandHandler) Handle(bot *tgbot.BotAPI, update *tgbot.Update
 		"Common:",
 		"/help - show this help",
 		"/hello - say hello",
+		"/summarize or /sum - summarize messages from a reply",
 		"",
 		"Custom commands:",
 		"/commands - list custom commands in this chat",

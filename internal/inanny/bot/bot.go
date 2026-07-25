@@ -5,12 +5,16 @@ import (
 	"log"
 	"os"
 	"strings"
+	"time"
 
 	tgbot "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	commands "github.com/holeyko/innany-tgbot/internal/inanny/bot/handlers/commands"
 	customcommands "github.com/holeyko/innany-tgbot/internal/inanny/features/customcommands"
+	messages "github.com/holeyko/innany-tgbot/internal/inanny/features/messages"
 	polls "github.com/holeyko/innany-tgbot/internal/inanny/features/polls"
 )
+
+var messageRepository = messages.NewRepository()
 
 func StartBot() {
 	debugLog("starting bot bootstrap")
@@ -78,6 +82,10 @@ func handleRequest(bot *tgbot.BotAPI, update *tgbot.Update) {
 
 func tryHandleMessage(bot *tgbot.BotAPI, update *tgbot.Update) (err error) {
 	if message := update.Message; message != nil {
+		if err := storeMessage(message); err != nil {
+			return err
+		}
+
 		if handled, commandDraftErr := commands.TryHandleCustomCommandDraftReply(bot, update); handled || commandDraftErr != nil {
 			return commandDraftErr
 		}
@@ -92,6 +100,46 @@ func tryHandleMessage(bot *tgbot.BotAPI, update *tgbot.Update) (err error) {
 	}
 
 	return
+}
+
+func storeMessage(message *tgbot.Message) error {
+	text := message.Text
+	if text == "" {
+		text = message.Caption
+	}
+	if text == "" || message.Chat == nil || message.MessageID == 0 {
+		return nil
+	}
+
+	sender := ""
+	if message.From != nil {
+		sender = message.From.UserName
+		if sender == "" {
+			sender = strings.TrimSpace(strings.Join([]string{message.From.FirstName, message.From.LastName}, " "))
+		}
+	}
+	if sender == "" && message.SenderChat != nil {
+		sender = message.SenderChat.Title
+	}
+
+	sentAt := time.Now()
+	if message.Date != 0 {
+		sentAt = time.Unix(int64(message.Date), 0)
+	}
+
+	replyToMessageID := int64(0)
+	if message.ReplyToMessage != nil {
+		replyToMessageID = int64(message.ReplyToMessage.MessageID)
+	}
+
+	return messageRepository.Save(messages.Message{
+		ChatID:           message.Chat.ID,
+		MessageID:        int64(message.MessageID),
+		Sender:           sender,
+		Text:             text,
+		ReplyToMessageID: replyToMessageID,
+		SentAt:           sentAt,
+	})
 }
 
 func tryHandleCallback(bot *tgbot.BotAPI, update *tgbot.Update) (err error) {
