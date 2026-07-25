@@ -126,12 +126,12 @@ db-migrate: docker-network
 	LIQUIBASE_COMMAND_PASSWORD="$(DB_PASSWORD)" \
 	docker run --rm \
 		--network "$(DOCKER_NETWORK)" \
-		--mount type=bind,src="$(CURDIR)/migrate",dst=/liquibase/migrate,readonly \
+		--mount type=bind,src="$(CURDIR)/migrate",dst=/liquibase/changelog,readonly \
 		-e LIQUIBASE_COMMAND_URL \
 		-e LIQUIBASE_COMMAND_USERNAME \
 		-e LIQUIBASE_COMMAND_PASSWORD \
 		$(LIQUIBASE_IMAGE) \
-		--changelog-file=/liquibase/migrate/changelog.xml update
+		--changelog-file=changelog.xml update
 
 deploy:
 	$(MAKE) docker-build
