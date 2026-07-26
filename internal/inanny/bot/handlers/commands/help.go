@@ -40,6 +40,7 @@ func (handler HelpCommandHandler) Handle(bot *tgbot.BotAPI, update *tgbot.Update
 		"- pin: pin poll",
 		"- rm: remove command message",
 		"- cron: schedule poll",
+		"- ext: let users add options to an active non-anonymous poll",
 	}
 
 	return sendReply(bot, update, strings.Join(lines, "\n"))

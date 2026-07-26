@@ -16,6 +16,7 @@ const (
 	Pin       Flag = "pin"
 	Remove    Flag = "rm"
 	Cron      Flag = "cron"
+	Ext       Flag = "ext"
 
 	titleDelimeter  = "\n"
 	flagsDelimeter  = ","

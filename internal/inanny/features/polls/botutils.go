@@ -1,8 +1,10 @@
 package poll
 
 import (
+	"encoding/json"
 	"errors"
 	"slices"
+	"strconv"
 
 	tgbot "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
@@ -23,14 +25,19 @@ func sendPollToChat(bot *tgbot.BotAPI, poll *Poll, chatID int64, sourceMessage *
 		return
 	}
 
-	pollConfig := tgbot.NewPoll(
-		chatID,
-		poll.Title,
-		poll.Options...,
-	)
+	var pollMessage tgbot.Message
+	if slices.Contains(poll.Flags, Ext) {
+		pollMessage, err = sendExtendablePoll(bot, poll, chatID)
+	} else {
+		pollConfig := tgbot.NewPoll(
+			chatID,
+			poll.Title,
+			poll.Options...,
+		)
 
-	applyFlagsToPollConfig(&pollConfig, poll.Flags)
-	pollMessage, err := bot.Send(pollConfig)
+		applyFlagsToPollConfig(&pollConfig, poll.Flags)
+		pollMessage, err = bot.Send(pollConfig)
+	}
 
 	if err != nil {
 		return
@@ -43,9 +50,36 @@ func sendPollToChat(bot *tgbot.BotAPI, poll *Poll, chatID int64, sourceMessage *
 func CheckPoll(poll *Poll) (err error) {
 	if len(poll.Options) < 2 {
 		err = errors.New("Should be at least 2 options")
+	} else if slices.Contains(poll.Flags, Ext) && slices.Contains(poll.Flags, Anonymous) {
+		err = errors.New("Extendable polls cannot be anonymous")
 	}
 
 	return
+}
+
+func sendExtendablePoll(bot *tgbot.BotAPI, poll *Poll, chatID int64) (tgbot.Message, error) {
+	params := tgbot.Params{
+		"chat_id":                 strconv.FormatInt(chatID, 10),
+		"question":                poll.Title,
+		"is_anonymous":            "false",
+		"allows_multiple_answers": strconv.FormatBool(slices.Contains(poll.Flags, Multipoll)),
+		"allow_adding_options":    "true",
+	}
+	if err := params.AddInterface("options", poll.Options); err != nil {
+		return tgbot.Message{}, err
+	}
+
+	response, err := bot.MakeRequest("sendPoll", params)
+	if err != nil {
+		return tgbot.Message{}, err
+	}
+
+	var message tgbot.Message
+	if err := json.Unmarshal(response.Result, &message); err != nil {
+		return tgbot.Message{}, err
+	}
+
+	return message, nil
 }
 
 func applyFlagsToPollConfig(pollConfig *tgbot.SendPollConfig, flags []Flag) {
