@@ -81,7 +81,7 @@ func helpText(section string) string {
 			"/commands delete <id> - delete one as creator or chat admin",
 			"",
 			"Flags: none.",
-			"Template: <name> <existing_command> <body>; use $1, $2, ... for values",
+			"Template: <name> <existing_command> [body]; use $1, $2, ... for values",
 			"Example: lunch bp [pin, rm] Lunch at $1 p.m.?",
 		}
 	case helpCallbackAI:
@@ -96,7 +96,7 @@ func helpText(section string) string {
 	case helpCallbackMain:
 		lines = []string{
 			"Innany commands",
-			"/help - show this help",
+			"/help, /man - show this help",
 			"/hello - say hello",
 			"/summarize, /summarise, /sum - summarize a replied conversation",
 			"/commands - manage custom commands",
@@ -132,6 +132,6 @@ func helpKeyboard(section string) tgbot.InlineKeyboardMarkup {
 
 func NewHelpCommandHandler() HelpCommandHandler {
 	return HelpCommandHandler{
-		CommandHandler: CommandHandler{command: "help"},
+		CommandHandler: CommandHandler{command: "help", aliases: []string{"man"}},
 	}
 }

@@ -84,20 +84,17 @@ func ParseCommandTemplate(input string) (CommandTemplate, error) {
 	input = strings.TrimSpace(input)
 	name, remain, ok := cutToken(input)
 	if !ok {
-		return CommandTemplate{}, errors.New("Usage: <command_name> <existing_command> <command_body>")
+		return CommandTemplate{}, errors.New("Usage: <command_name> <existing_command> [command_body]")
 	}
 
 	targetCommand, body, ok := cutToken(remain)
 	if !ok {
-		return CommandTemplate{}, errors.New("Usage: <command_name> <existing_command> <command_body>")
+		return CommandTemplate{}, errors.New("Usage: <command_name> <existing_command> [command_body]")
 	}
 
 	name = strings.TrimPrefix(name, "/")
 	targetCommand = strings.TrimPrefix(targetCommand, "/")
 	body = strings.TrimSpace(body)
-	if body == "" {
-		return CommandTemplate{}, errors.New("Command body can't be empty")
-	}
 	if !isValidCommandName(name) {
 		return CommandTemplate{}, fmt.Errorf("Invalid command name: %s", name)
 	}
@@ -289,7 +286,7 @@ func cutToken(input string) (string, string, bool) {
 		}
 	}
 
-	return "", "", false
+	return input, "", true
 }
 
 func isValidCommandName(command string) bool {
