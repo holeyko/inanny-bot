@@ -17,10 +17,19 @@ const maxCustomCommandDepth = 10
 
 type CommandHandler struct {
 	command string
+	aliases []string
 }
 
 func (handler CommandHandler) IsSutable(command *string) bool {
-	return *command == handler.command
+	if *command == handler.command {
+		return true
+	}
+	for _, alias := range handler.aliases {
+		if *command == alias {
+			return true
+		}
+	}
+	return false
 }
 
 var commandHandlers = [...]handlers.TgUpdateHandler[string]{

@@ -28,14 +28,13 @@ type SummarizeCommandHandler struct {
 
 func NewSummarizeCommandHandler(client ai.AIClient, repository messages.Repository) SummarizeCommandHandler {
 	return SummarizeCommandHandler{
-		CommandHandler: CommandHandler{command: "summarize"},
-		client:         client,
-		repository:     repository,
+		CommandHandler: CommandHandler{
+			command: "summarize",
+			aliases: []string{"summarise", "sum"},
+		},
+		client:     client,
+		repository: repository,
 	}
-}
-
-func (handler SummarizeCommandHandler) IsSutable(command *string) bool {
-	return *command == "summarize" || *command == "sum"
 }
 
 func (handler SummarizeCommandHandler) Handle(bot *tgbot.BotAPI, update *tgbot.Update) error {

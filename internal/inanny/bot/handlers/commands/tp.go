@@ -16,6 +16,9 @@ func (handler TPCommandHandler) Handle(bot *tgbot.BotAPI, update *tgbot.Update) 
 
 func NewTPCommandHandler() TPCommandHandler {
 	return TPCommandHandler{
-		CommandHandler: CommandHandler{command: "tp"},
+		CommandHandler: CommandHandler{
+			command: "tp",
+			aliases: []string{"tripple_poll"},
+		},
 	}
 }

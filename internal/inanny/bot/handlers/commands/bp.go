@@ -16,6 +16,9 @@ func (handler BPCommandHandler) Handle(bot *tgbot.BotAPI, update *tgbot.Update) 
 
 func NewBPCommandHandler() BPCommandHandler {
 	return BPCommandHandler{
-		CommandHandler: CommandHandler{command: "bp"},
+		CommandHandler: CommandHandler{
+			command: "bp",
+			aliases: []string{"bin_poll"},
+		},
 	}
 }

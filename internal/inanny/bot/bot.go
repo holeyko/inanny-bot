@@ -144,8 +144,12 @@ func storeMessage(message *tgbot.Message) error {
 
 func tryHandleCallback(bot *tgbot.BotAPI, update *tgbot.Update) (err error) {
 	if callback := update.CallbackQuery; callback != nil {
-		callbackData := callback.Data
-		log.Println("Callback data:", callbackData)
+		handled, callbackErr := commands.HandleHelpCallback(bot, update)
+		if handled {
+			return callbackErr
+		}
+
+		log.Println("Callback data:", callback.Data)
 	}
 
 	return

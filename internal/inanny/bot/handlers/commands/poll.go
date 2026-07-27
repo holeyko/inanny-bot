@@ -27,6 +27,7 @@ func NewPollCommandHandler() PollCommandHandler {
 	return PollCommandHandler{
 		CommandHandler: CommandHandler{
 			command: "poll",
+			aliases: []string{"p"},
 		},
 	}
 }
