@@ -96,6 +96,8 @@ func tryHandleMessage(bot *tgbot.BotAPI, update *tgbot.Update) (err error) {
 
 		if command := message.Command(); command != "" {
 			err = handleCommand(bot, update)
+		} else if handled, mentionErr := commands.TryHandleCrewMention(bot, update); handled {
+			err = mentionErr
 		}
 	}
 
@@ -175,12 +177,19 @@ func handleError(bot *tgbot.BotAPI, update *tgbot.Update, err error) {
 	if update.Message == nil {
 		log.Println("Error while handling update without message:", err)
 	} else {
-		sendErrorResponse(bot, update.Message.Chat.ID, err)
+		sendErrorResponse(bot, update, err)
 	}
 }
 
-func sendErrorResponse(bot *tgbot.BotAPI, chatId int64, err error) {
-	messageConfig := tgbot.NewMessage(chatId, err.Error())
+func sendErrorResponse(bot *tgbot.BotAPI, update *tgbot.Update, err error) {
+	message := update.Message
+	replyToMessageID := message.MessageID
+	if message.ReplyToMessage != nil {
+		replyToMessageID = message.ReplyToMessage.MessageID
+	}
+
+	messageConfig := tgbot.NewMessage(message.Chat.ID, err.Error())
+	messageConfig.ReplyToMessageID = replyToMessageID
 	bot.Send(messageConfig)
 }
 

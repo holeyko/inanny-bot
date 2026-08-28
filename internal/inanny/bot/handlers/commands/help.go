@@ -11,6 +11,7 @@ const (
 	helpCallbackMain     = helpCallbackPrefix + "main"
 	helpCallbackPolls    = helpCallbackPrefix + "polls"
 	helpCallbackCommands = helpCallbackPrefix + "commands"
+	helpCallbackCrews    = helpCallbackPrefix + "crews"
 	helpCallbackAI       = helpCallbackPrefix + "ai"
 )
 
@@ -84,6 +85,21 @@ func helpText(section string) string {
 			"Template: <name> <existing_command> [body]; use $1, $2, ... for values",
 			"Example: lunch bp [pin, rm] Lunch at $1 p.m.?",
 		}
+	case helpCallbackCrews:
+		lines = []string{
+			"Crews",
+			"/crew <name> - mention all members of a crew",
+			"@<name> - mention all members in a regular chat message",
+			"/crew create <name> <username> - create a crew with one additional member",
+			"/crew delete <name> - delete a crew",
+			"/crew <name> add <username> - add a member",
+			"/crew <name> delete <username> - remove a member",
+			"",
+			"Separate usernames with spaces, commas, or both.",
+			"The creator is added automatically; provide exactly one unique additional member.",
+			"The final crew must have at least 2 unique members. The creator may also be listed explicitly.",
+			"Examples: @alice sends /crew create developers bob, or /crew create developers alice bob",
+		}
 	case helpCallbackAI:
 		lines = []string{
 			"AI features",
@@ -100,6 +116,7 @@ func helpText(section string) string {
 			"/hello - say hello",
 			"/summarize, /summarise, /sum - summarize a replied conversation",
 			"/commands - manage custom commands",
+			"/crew - manage and mention crews",
 			"/poll, /p - create a custom poll",
 			"/bin_poll, /bp - create a Да/Нет poll",
 			"/tripple_poll, /tp - create a Да/Нет/Тык poll",
@@ -118,6 +135,7 @@ func helpKeyboard(section string) tgbot.InlineKeyboardMarkup {
 			tgbot.NewInlineKeyboardRow(
 				tgbot.NewInlineKeyboardButtonData("Polls", helpCallbackPolls),
 				tgbot.NewInlineKeyboardButtonData("Commands", helpCallbackCommands),
+				tgbot.NewInlineKeyboardButtonData("Crews", helpCallbackCrews),
 				tgbot.NewInlineKeyboardButtonData("AI features", helpCallbackAI),
 			),
 		)

@@ -8,6 +8,19 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type Crew struct {
+	ID            int64
+	ChatID        int64
+	CreatorUserID int64
+	Name          string
+	CreatedAt     pgtype.Timestamp
+}
+
+type CrewMember struct {
+	CrewID int64
+	UserID int64
+}
+
 type CustomCommand struct {
 	ID            int64
 	ChatID        int64

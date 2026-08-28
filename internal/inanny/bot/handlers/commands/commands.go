@@ -39,6 +39,7 @@ var commandHandlers = [...]handlers.TgUpdateHandler[string]{
 	NewTPCommandHandler(),
 	NewPollsCommandHandler(),
 	NewCommandsCommandHandler(),
+	NewCrewCommandHandler(),
 	NewHelloCommandHandler(),
 	NewDefaultSummarizeCommandHandler(),
 }
