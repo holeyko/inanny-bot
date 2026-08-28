@@ -14,6 +14,8 @@ type CrewCommandHandler struct {
 	CommandHandler
 }
 
+const maxCrewMentionsPerMessage = 5
+
 func (handler CrewCommandHandler) Handle(bot *tgbot.BotAPI, update *tgbot.Update) error {
 	args := strings.Fields(update.Message.CommandArguments())
 	if len(args) == 0 {
@@ -180,11 +182,7 @@ func handleMentionCrew(bot *tgbot.BotAPI, update *tgbot.Update, name string) err
 		return fmt.Errorf("Crew %q has no members", name)
 	}
 
-	mentions := make([]string, len(crew.Members))
-	for i, member := range crew.Members {
-		mentions[i] = "@" + member
-	}
-	return sendCrewReply(bot, update, strings.Join(mentions, " "))
+	return sendCrewMentions(bot, update, crew.Members)
 }
 
 func TryHandleCrewMention(bot *tgbot.BotAPI, update *tgbot.Update) (bool, error) {
@@ -214,12 +212,21 @@ func TryHandleCrewMention(bot *tgbot.BotAPI, update *tgbot.Update) (bool, error)
 	if len(crew.Members) == 0 {
 		return true, fmt.Errorf("Crew %q has no members", name)
 	}
-	mentions := make([]string, len(crew.Members))
-	for i, member := range crew.Members {
-		mentions[i] = "@" + member
-	}
+	return true, sendCrewMentions(bot, update, crew.Members)
+}
 
-	return true, sendCrewReply(bot, update, strings.Join(mentions, " "))
+func sendCrewMentions(bot *tgbot.BotAPI, update *tgbot.Update, members []string) error {
+	for start := 0; start < len(members); start += maxCrewMentionsPerMessage {
+		end := min(start+maxCrewMentionsPerMessage, len(members))
+		mentions := make([]string, end-start)
+		for i, member := range members[start:end] {
+			mentions[i] = "@" + member
+		}
+		if err := sendCrewReply(bot, update, strings.Join(mentions, " ")); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func getCrew(update *tgbot.Update, name string) (*crews.Crew, error) {
