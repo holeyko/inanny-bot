@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strings"
 	"unicode"
-	"unicode/utf16"
 
 	tgbot "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	crews "github.com/holeyko/innany-tgbot/internal/inanny/features/crews"
@@ -351,37 +350,11 @@ func validCrewMemberSeparators(input string) bool {
 }
 
 func singleCrewMention(message *tgbot.Message) (string, bool) {
-	if strings.TrimSpace(message.Text) == "" || len(message.Entities) == 0 {
-		return "", false
-	}
-
-	var mention string
-	mentionCount := 0
-	for _, entity := range message.Entities {
-		if !entity.IsMention() {
-			continue
-		}
-		value, ok := messageEntityText(message.Text, entity)
-		if !ok {
-			return "", false
-		}
-		mention = value
-		mentionCount++
-	}
-	if mentionCount != 1 || strings.TrimSpace(message.Text) != mention || len(mention) < 2 || mention[0] != '@' {
+	mention := strings.TrimSpace(message.Text)
+	if len(mention) < 2 || mention[0] != '@' {
 		return "", false
 	}
 	return mention, true
-}
-
-func messageEntityText(text string, entity tgbot.MessageEntity) (string, bool) {
-	encoded := utf16.Encode([]rune(text))
-	start := entity.Offset
-	end := entity.Offset + entity.Length
-	if start < 0 || end < start || end > len(encoded) {
-		return "", false
-	}
-	return string(utf16.Decode(encoded[start:end])), true
 }
 
 func sendCrewReply(bot *tgbot.BotAPI, update *tgbot.Update, text string) error {
