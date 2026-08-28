@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/holeyko/innany-tgbot/internal/generated/queries"
 	"github.com/holeyko/innany-tgbot/internal/inanny/infra/db"
@@ -14,7 +16,7 @@ import (
 
 var ErrCrewNotFound = errors.New("crew not found")
 
-var telegramNameRegexp = regexp.MustCompile(`^[A-Za-z0-9_]{1,32}$`)
+var telegramUsernameRegexp = regexp.MustCompile(`^[A-Za-z0-9_]{1,32}$`)
 
 type UserDto struct {
 	TelegramLogin string
@@ -150,6 +152,45 @@ func AddCrewMember(crewID int64, username string) (bool, error) {
 	return rowsAffected > 0, err
 }
 
+type duplicateCrewMemberError struct {
+	Username string
+}
+
+func (err *duplicateCrewMemberError) Error() string {
+	return "crew member already exists"
+}
+
+func AddCrewMembers(crewID int64, usernames []string) (string, error) {
+	_, err := db.ExecuteInTransaction(func(q *queries.Queries) (struct{}, error) {
+		for _, username := range usernames {
+			user, err := q.EnsureUserByTelegramLogin(context.Background(), username)
+			if err != nil {
+				return struct{}{}, err
+			}
+			rowsAffected, err := q.AddCrewMember(context.Background(), queries.AddCrewMemberParams{
+				CrewID: crewID,
+				UserID: user.ID,
+			})
+			if err != nil {
+				return struct{}{}, err
+			}
+			if rowsAffected == 0 {
+				return struct{}{}, &duplicateCrewMemberError{Username: username}
+			}
+		}
+		return struct{}{}, nil
+	})
+	if err == nil {
+		return "", nil
+	}
+
+	var duplicate *duplicateCrewMemberError
+	if errors.As(err, &duplicate) {
+		return duplicate.Username, nil
+	}
+	return "", err
+}
+
 func DeleteCrewMember(crewID int64, username string) (bool, error) {
 	rowsAffected, err := db.Execute(func(q *queries.Queries) (int64, error) {
 		return q.DeleteCrewMember(context.Background(), queries.DeleteCrewMemberParams{
@@ -179,14 +220,19 @@ func NormalizeName(name string) string {
 }
 
 func ValidateName(name string) error {
-	if !telegramNameRegexp.MatchString(name) {
-		return fmt.Errorf("Invalid crew name %q. Use 1-32 letters, numbers, or underscores", name)
+	if name == "" || utf8.RuneCountInString(name) > 128 {
+		return fmt.Errorf("Invalid crew name %q. Use 1-128 characters", name)
+	}
+	for _, r := range name {
+		if !unicode.IsLetter(r) && !unicode.IsDigit(r) && !unicode.IsMark(r) && r != '_' {
+			return fmt.Errorf("Invalid crew name %q. Use letters, numbers, or underscores", name)
+		}
 	}
 	return nil
 }
 
 func ValidateUsername(username string) error {
-	if !telegramNameRegexp.MatchString(username) {
+	if !telegramUsernameRegexp.MatchString(username) {
 		return fmt.Errorf("Invalid Telegram username %q. Use 1-32 letters, numbers, or underscores", username)
 	}
 	return nil

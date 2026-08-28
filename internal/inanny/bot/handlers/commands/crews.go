@@ -36,7 +36,7 @@ func (handler CrewCommandHandler) Handle(bot *tgbot.BotAPI, update *tgbot.Update
 
 func handleCreateCrew(bot *tgbot.BotAPI, update *tgbot.Update, args []string) error {
 	if len(args) < 3 {
-		return errors.New("Usage: /crew create <name> <username>")
+		return errors.New("Usage: /crew create <name> <username1> <username2> ...")
 	}
 
 	name := crews.NormalizeName(args[1])
@@ -109,8 +109,11 @@ func handleDeleteCrew(bot *tgbot.BotAPI, update *tgbot.Update, args []string) er
 }
 
 func handleChangeCrewMember(bot *tgbot.BotAPI, update *tgbot.Update, args []string) error {
-	if len(args) != 3 || (args[1] != "add" && args[1] != "delete") {
-		return errors.New("Usage: /crew <name> add|delete <username>")
+	if len(args) < 3 || (args[1] != "add" && args[1] != "delete") {
+		return errors.New("Usage: /crew <name> add <username1> <username2> ... | delete <username>")
+	}
+	if args[1] == "delete" && len(args) != 3 {
+		return errors.New("Usage: /crew <name> delete <username>")
 	}
 
 	name := crews.NormalizeName(args[0])
@@ -122,32 +125,46 @@ func handleChangeCrewMember(bot *tgbot.BotAPI, update *tgbot.Update, args []stri
 		return err
 	}
 
-	username := crews.NormalizeUsername(args[2])
-	if err := crews.ValidateUsername(username); err != nil {
-		return err
-	}
-
-	var changed bool
-	if args[1] == "add" {
-		changed, err = crews.AddCrewMember(crew.ID, username)
-		if err == nil && !changed {
-			return fmt.Errorf("@%s is already a member of crew %q", username, name)
-		}
-	} else {
-		changed, err = crews.DeleteCrewMember(crew.ID, username)
-		if err == nil && !changed {
-			return fmt.Errorf("@%s is not a member of crew %q", username, name)
-		}
-	}
+	usernames, err := parseCrewUsernames(strings.Join(args[2:], " "))
 	if err != nil {
 		return err
+	}
+	if err := rejectDuplicateCrewUsernames(usernames); err != nil {
+		return err
+	}
+	if args[1] == "delete" && len(usernames) != 1 {
+		return errors.New("Only one member can be deleted at a time")
+	}
+
+	if args[1] == "add" {
+		duplicate, err := crews.AddCrewMembers(crew.ID, usernames)
+		if err != nil {
+			return err
+		}
+		if duplicate != "" {
+			return fmt.Errorf("@%s is already a member of crew %q", duplicate, name)
+		}
+	} else {
+		for _, username := range usernames {
+			changed, err := crews.DeleteCrewMember(crew.ID, username)
+			if err != nil {
+				return err
+			}
+			if !changed {
+				return fmt.Errorf("@%s is not a member of crew %q", username, name)
+			}
+		}
 	}
 
 	action := "added to"
 	if args[1] == "delete" {
 		action = "removed from"
 	}
-	return sendCrewReply(bot, update, fmt.Sprintf("@%s was %s crew %q", username, action, name))
+	verb := "was"
+	if len(usernames) > 1 {
+		verb = "were"
+	}
+	return sendCrewReply(bot, update, fmt.Sprintf("@%s %s %s crew %q", strings.Join(usernames, " @"), verb, action, name))
 }
 
 func handleMentionCrew(bot *tgbot.BotAPI, update *tgbot.Update, name string) error {
@@ -246,6 +263,34 @@ func requireCrewManager(bot *tgbot.BotAPI, update *tgbot.Update, crew *crews.Cre
 }
 
 func parseCrewMembers(input string, creatorUsername string) ([]string, error) {
+	creatorUsername = crews.NormalizeUsername(creatorUsername)
+	if err := crews.ValidateUsername(creatorUsername); err != nil {
+		return nil, err
+	}
+	parts, err := parseCrewUsernames(input)
+	if err != nil {
+		return nil, err
+	}
+
+	members := []string{creatorUsername}
+	seen := map[string]struct{}{creatorUsername: {}}
+	for _, part := range parts {
+		if part == creatorUsername {
+			continue
+		}
+		if _, exists := seen[part]; exists {
+			return nil, fmt.Errorf("Duplicate crew member @%s", part)
+		}
+		seen[part] = struct{}{}
+		members = append(members, part)
+	}
+	if len(members) < 2 {
+		return nil, errors.New("A crew must have at least 2 unique members, including its creator")
+	}
+	return members, nil
+}
+
+func parseCrewUsernames(input string) ([]string, error) {
 	if !validCrewMemberSeparators(input) {
 		return nil, errors.New("Crew members must be separated by spaces, commas, or both")
 	}
@@ -253,32 +298,30 @@ func parseCrewMembers(input string, creatorUsername string) ([]string, error) {
 	parts := strings.FieldsFunc(input, func(r rune) bool {
 		return r == ',' || unicode.IsSpace(r)
 	})
+	if len(parts) == 0 {
+		return nil, errors.New("At least one crew member is required")
+	}
 
-	members := []string{creatorUsername}
-	seen := map[string]struct{}{creatorUsername: {}}
-	additionalMembers := 0
+	usernames := make([]string, 0, len(parts))
 	for _, part := range parts {
-		member := crews.NormalizeUsername(part)
-		if err := crews.ValidateUsername(member); err != nil {
+		username := crews.NormalizeUsername(part)
+		if err := crews.ValidateUsername(username); err != nil {
 			return nil, err
 		}
-		if member == creatorUsername {
-			continue
-		}
-		if _, exists := seen[member]; exists {
-			return nil, fmt.Errorf("Duplicate crew member @%s", member)
-		}
-		additionalMembers++
-		if additionalMembers > 1 {
-			return nil, errors.New("A crew can have only one additional member when it is created")
-		}
-		seen[member] = struct{}{}
-		members = append(members, member)
+		usernames = append(usernames, username)
 	}
-	if len(members) < 2 {
-		return nil, errors.New("A crew must have at least 2 unique members, including its creator")
+	return usernames, nil
+}
+
+func rejectDuplicateCrewUsernames(usernames []string) error {
+	seen := make(map[string]struct{}, len(usernames))
+	for _, username := range usernames {
+		if _, exists := seen[username]; exists {
+			return fmt.Errorf("Duplicate crew member @%s", username)
+		}
+		seen[username] = struct{}{}
 	}
-	return members, nil
+	return nil
 }
 
 func validCrewMemberSeparators(input string) bool {

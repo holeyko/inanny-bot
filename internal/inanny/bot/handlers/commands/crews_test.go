@@ -69,10 +69,10 @@ func TestParseCrewMembers(t *testing.T) {
 			wantErr: "must be separated",
 		},
 		{
-			name:    "more than one additional member",
+			name:    "multiple additional members",
 			input:   "bob,carol",
 			creator: "alice",
-			wantErr: "only one additional",
+			want:    []string{"alice", "bob", "carol"},
 		},
 	}
 
@@ -93,5 +93,21 @@ func TestParseCrewMembers(t *testing.T) {
 				t.Fatalf("parseCrewMembers() error = %v, want containing %q", err, test.wantErr)
 			}
 		})
+	}
+}
+
+func TestParseCrewUsernames(t *testing.T) {
+	usernames, err := parseCrewUsernames("bob, carol dave")
+	if err != nil {
+		t.Fatalf("parseCrewUsernames() error = %v", err)
+	}
+
+	want := []string{"bob", "carol", "dave"}
+	if !reflect.DeepEqual(usernames, want) {
+		t.Fatalf("parseCrewUsernames() = %v, want %v", usernames, want)
+	}
+
+	if err := rejectDuplicateCrewUsernames([]string{"bob", "bob"}); err == nil {
+		t.Fatal("rejectDuplicateCrewUsernames() error = nil, want duplicate error")
 	}
 }
