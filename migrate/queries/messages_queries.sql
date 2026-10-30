@@ -21,3 +21,14 @@ WHERE chat_id = $1
   AND message_id >= $2
   AND message_id < $3
 ORDER BY message_id;
+
+-- name: ListSummaryMessages :many
+SELECT message_id, sender, right(text, sqlc.arg(max_chars)::integer) AS text,
+       length(text) > sqlc.arg(max_chars)::integer AS truncated
+FROM messages
+WHERE chat_id = sqlc.arg(chat_id)
+  AND message_id >= sqlc.arg(from_message_id)
+  AND message_id < sqlc.arg(before_message_id)
+  AND btrim(text) <> ''
+ORDER BY message_id DESC
+LIMIT sqlc.arg(page_size)::integer;

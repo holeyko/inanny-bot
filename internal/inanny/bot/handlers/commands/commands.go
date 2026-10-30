@@ -9,6 +9,7 @@ import (
 	tgbot "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	handlers "github.com/holeyko/innany-tgbot/internal/inanny/bot/handlers"
 	ai "github.com/holeyko/innany-tgbot/internal/inanny/features/ai"
+	"github.com/holeyko/innany-tgbot/internal/inanny/features/aiquota"
 	customcommands "github.com/holeyko/innany-tgbot/internal/inanny/features/customcommands"
 	messages "github.com/holeyko/innany-tgbot/internal/inanny/features/messages"
 )
@@ -32,6 +33,8 @@ func (handler CommandHandler) IsSutable(command *string) bool {
 	return false
 }
 
+var defaultAIRouter = newAIRouter()
+
 var commandHandlers = [...]handlers.TgUpdateHandler[string]{
 	NewHelpCommandHandler(),
 	NewPollCommandHandler(),
@@ -43,13 +46,22 @@ var commandHandlers = [...]handlers.TgUpdateHandler[string]{
 	NewCrewsCommandHandler(),
 	NewHelloCommandHandler(),
 	NewDefaultSummarizeCommandHandler(),
+	NewAICommandHandler(defaultAIRouter),
 }
 
 func NewDefaultSummarizeCommandHandler() SummarizeCommandHandler {
 	return NewSummarizeCommandHandler(
-		newDefaultAIClient(),
+		defaultAIRouter,
 		messages.NewRepository(),
 	)
+}
+
+func newAIRouter() *ai.Router {
+	var primary ai.AIClient
+	if key := strings.TrimSpace(os.Getenv("OPENROUTER_API_KEY")); key != "" {
+		primary = ai.NewOpenRouterClient(key, os.Getenv("OPENROUTER_MODEL"))
+	}
+	return ai.NewRouter(primary, newDefaultAIClient(), aiquota.Store{})
 }
 
 func newDefaultAIClient() ai.AIClient {

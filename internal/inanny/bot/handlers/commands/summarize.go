@@ -7,6 +7,7 @@ import (
 	"log"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	tgbot "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	ai "github.com/holeyko/innany-tgbot/internal/inanny/features/ai"
@@ -42,6 +43,14 @@ func (handler SummarizeCommandHandler) Handle(bot *tgbot.BotAPI, update *tgbot.U
 	if message == nil || message.ReplyToMessage == nil {
 		return sendReply(bot, update, "Reply to the first message you want to summarize, then use /summarize")
 	}
+	if message.ReplyToMessage.MessageID >= message.MessageID {
+		return sendReply(bot, update, "Reply to an earlier message, then use /sum")
+	}
+	release, admitted := acquireSummary(message.Chat.ID)
+	if !admitted {
+		return sendReply(bot, update, "A summary is already running in this chat, or the bot is busy. Please try again shortly")
+	}
+	defer release()
 
 	conversation, err := handler.conversation(message)
 	if err != nil {
@@ -53,7 +62,9 @@ func (handler SummarizeCommandHandler) Handle(bot *tgbot.BotAPI, update *tgbot.U
 	}
 
 	request := ai.CompletionRequest{
-		SystemPrompt: summarizeSystemPrompt,
+		ChatID:          message.Chat.ID,
+		MaxOutputTokens: summaryOutputTokens,
+		SystemPrompt:    summarizeSystemPrompt,
 		UserPrompt: fmt.Sprintf(
 			"Identify the main topics, themes, or subjects discussed in the conversation below. Separate topics only when they are truly distinct in meaning. Keep closely related messages, subtopics, and different aspects of the same subject under one topic; do not create a new topic for every message or minor change of angle. For each topic, briefly retell the essence of what was discussed in a natural, conversational, less formal way. "+
 				"Each conversation line may begin with the author’s username or name. When describing who said or discussed something, refer to that author by the available username or name. Do not replace known author names with generic terms such as users, participants, or others. Do not invent an author name when none is provided. "+
@@ -70,7 +81,7 @@ func (handler SummarizeCommandHandler) Handle(bot *tgbot.BotAPI, update *tgbot.U
 		return errors.New("AI summarization is not configured. Please try again later")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Second)
 	defer cancel()
 	summary, err := handler.client.Complete(ctx, request)
 	if err != nil {
@@ -83,7 +94,7 @@ func (handler SummarizeCommandHandler) Handle(bot *tgbot.BotAPI, update *tgbot.U
 		return errors.New("The AI returned an empty summary. Please try again later")
 	}
 	if conversation.truncated {
-		response = "The conversation exceeded 10,000 words. Only the last 10,000 words were summarized.\n\n" + response
+		response = "The conversation exceeded the input budget. Only the most recent part was summarized.\n\n" + response
 	}
 
 	return sendSummary(bot, message, response)
@@ -116,46 +127,80 @@ type preparedConversation struct {
 
 func (handler SummarizeCommandHandler) conversation(message *tgbot.Message) (preparedConversation, error) {
 	reply := message.ReplyToMessage
-	storedMessages, err := handler.repository.ListBetween(message.Chat.ID, int64(reply.MessageID), int64(message.MessageID))
-	if err != nil {
-		return preparedConversation{}, err
-	}
-
-	conversationMessages := make([]messages.Message, 0, len(storedMessages)+1)
-	if len(storedMessages) == 0 || storedMessages[0].MessageID != int64(reply.MessageID) {
-		if text := messageText(reply); text != "" {
-			conversationMessages = append(conversationMessages, messages.Message{
-				MessageID: int64(reply.MessageID),
-				Sender:    messageSender(reply),
-				Text:      text,
-			})
-		}
-	}
-	conversationMessages = append(conversationMessages, storedMessages...)
-
-	lines := make([]string, 0, len(conversationMessages))
-	for _, conversationMessage := range conversationMessages {
-		text := strings.TrimSpace(conversationMessage.Text)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	const pageSize, maxMessages = 64, 2000
+	before := int64(message.MessageID)
+	lines := make([]string, 0, pageSize)
+	charsLeft, wordsLeft := summaryInputChars, maxSummaryWords
+	truncated, foundReply, exhausted := false, false, false
+	appendMessage := func(item messages.Message) bool {
+		text := strings.TrimSpace(item.Text)
 		if text == "" {
-			continue
+			return true
 		}
-		if conversationMessage.Sender != "" {
-			lines = append(lines, conversationMessage.Sender+": "+text)
-		} else {
-			lines = append(lines, text)
+		prefix := ""
+		if item.Sender != "" {
+			prefix = item.Sender + ": "
+		}
+		// Reserve a newline and the author's name before trimming message text.
+		bodyChars := charsLeft - utf8.RuneCountInString(prefix) - 1
+		bodyWords := wordsLeft - len(strings.Fields(prefix))
+		if bodyChars <= 0 || bodyWords <= 0 {
+			truncated = true
+			return false
+		}
+		if utf8.RuneCountInString(text) > bodyChars {
+			runes := []rune(text)
+			text = string(runes[len(runes)-bodyChars:])
+			truncated = true
+		}
+		words := strings.Fields(text)
+		if len(words) > bodyWords {
+			text = strings.Join(words[len(words)-bodyWords:], " ")
+			truncated = true
+		}
+		line := prefix + text
+		lines = append(lines, line)
+		charsLeft -= utf8.RuneCountInString(line) + 1
+		wordsLeft -= len(strings.Fields(line))
+		truncated = truncated || item.Truncated
+		return !truncated && charsLeft > 1 && wordsLeft > 0
+	}
+	for scanned := 0; scanned < maxMessages && !exhausted; {
+		limit := min(pageSize, maxMessages-scanned)
+		page, err := handler.repository.ListSummaryPage(ctx, message.Chat.ID, int64(reply.MessageID), before, limit, summaryInputChars)
+		if err != nil {
+			return preparedConversation{}, err
+		}
+		for _, item := range page {
+			scanned++
+			foundReply = foundReply || item.MessageID == int64(reply.MessageID)
+			before = item.MessageID
+			if !appendMessage(item) {
+				exhausted = true
+				truncated = true
+				break
+			}
+		}
+		if exhausted {
+			break
+		}
+		if len(page) < limit {
+			if !foundReply {
+				appendMessage(messages.Message{Sender: messageSender(reply), Text: messageText(reply)})
+			}
+			break
+		}
+		if scanned == maxMessages {
+			truncated = true
 		}
 	}
-
-	words := strings.Fields(strings.Join(lines, "\n"))
-	truncated := len(words) > maxSummaryWords
-	if truncated {
-		words = words[len(words)-maxSummaryWords:]
+	// Pages arrive newest first; restore author/message boundaries chronologically.
+	for i, j := 0, len(lines)-1; i < j; i, j = i+1, j-1 {
+		lines[i], lines[j] = lines[j], lines[i]
 	}
-
-	return preparedConversation{
-		text:      strings.Join(words, " "),
-		truncated: truncated,
-	}, nil
+	return preparedConversation{text: strings.Join(lines, "\n"), truncated: truncated}, nil
 }
 
 func sendSummary(bot *tgbot.BotAPI, message *tgbot.Message, text string) error {
@@ -194,6 +239,9 @@ func messageText(message *tgbot.Message) string {
 }
 
 func messageSender(message *tgbot.Message) string {
+	if message.SenderChat != nil {
+		return message.SenderChat.Title
+	}
 	if message.From == nil {
 		return ""
 	}

@@ -54,6 +54,64 @@ func (q *Queries) ListMessagesBetween(ctx context.Context, arg ListMessagesBetwe
 	return items, nil
 }
 
+const listSummaryMessages = `-- name: ListSummaryMessages :many
+SELECT message_id, sender, right(text, $1::integer) AS text,
+       length(text) > $1::integer AS truncated
+FROM messages
+WHERE chat_id = $2
+  AND message_id >= $3
+  AND message_id < $4
+  AND btrim(text) <> ''
+ORDER BY message_id DESC
+LIMIT $5::integer
+`
+
+type ListSummaryMessagesParams struct {
+	MaxChars        int32
+	ChatID          int64
+	FromMessageID   int64
+	BeforeMessageID int64
+	PageSize        int32
+}
+
+type ListSummaryMessagesRow struct {
+	MessageID int64
+	Sender    string
+	Text      string
+	Truncated bool
+}
+
+func (q *Queries) ListSummaryMessages(ctx context.Context, arg ListSummaryMessagesParams) ([]ListSummaryMessagesRow, error) {
+	rows, err := q.db.Query(ctx, listSummaryMessages,
+		arg.MaxChars,
+		arg.ChatID,
+		arg.FromMessageID,
+		arg.BeforeMessageID,
+		arg.PageSize,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListSummaryMessagesRow
+	for rows.Next() {
+		var i ListSummaryMessagesRow
+		if err := rows.Scan(
+			&i.MessageID,
+			&i.Sender,
+			&i.Text,
+			&i.Truncated,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const upsertMessage = `-- name: UpsertMessage :exec
 INSERT INTO messages (
     chat_id,

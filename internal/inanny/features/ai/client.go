@@ -8,8 +8,10 @@ import (
 var ErrNotConfigured = errors.New("ai client is not configured")
 
 type CompletionRequest struct {
-	SystemPrompt string
-	UserPrompt   string
+	SystemPrompt    string
+	UserPrompt      string
+	ChatID          int64
+	MaxOutputTokens int
 }
 
 type AIClient interface {

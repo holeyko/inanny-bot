@@ -8,6 +8,12 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type AiDailyQuotum struct {
+	ChatID       int64
+	UsageDate    pgtype.Date
+	RequestsUsed int32
+}
+
 type Crew struct {
 	ID            int64
 	ChatID        int64

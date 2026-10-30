@@ -17,11 +17,13 @@ type Message struct {
 	Text             string
 	ReplyToMessageID int64
 	SentAt           time.Time
+	Truncated        bool
 }
 
 type Repository interface {
 	Save(message Message) error
 	ListBetween(chatID int64, fromMessageID int64, beforeMessageID int64) ([]Message, error)
+	ListSummaryPage(ctx context.Context, chatID, fromMessageID, beforeMessageID int64, pageSize, maxChars int) ([]Message, error)
 }
 
 type repository struct{}
@@ -35,8 +37,10 @@ func (repository) Save(message Message) error {
 		return errors.New("message must have chat id, message id, and text")
 	}
 
-	_, err := db.Execute(func(q *queries.Queries) (struct{}, error) {
-		err := q.UpsertMessage(context.Background(), queries.UpsertMessageParams{
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_, err := db.ExecuteContext(ctx, func(q *queries.Queries) (struct{}, error) {
+		err := q.UpsertMessage(ctx, queries.UpsertMessageParams{
 			ChatID:           message.ChatID,
 			MessageID:        message.MessageID,
 			Sender:           message.Sender,
@@ -80,4 +84,23 @@ func int8Value(value pgtype.Int8) int64 {
 		return 0
 	}
 	return value.Int64
+}
+
+// ListSummaryPage reads newest-first with bounded rows and text size. Callers
+// use message IDs as cursors, avoiding an unbounded history allocation.
+func (repository) ListSummaryPage(ctx context.Context, chatID, fromMessageID, beforeMessageID int64, pageSize, maxChars int) ([]Message, error) {
+	return db.ExecuteContext(ctx, func(q *queries.Queries) ([]Message, error) {
+		rows, err := q.ListSummaryMessages(ctx, queries.ListSummaryMessagesParams{
+			ChatID: chatID, FromMessageID: fromMessageID, BeforeMessageID: beforeMessageID,
+			PageSize: int32(pageSize), MaxChars: int32(maxChars),
+		})
+		if err != nil {
+			return nil, err
+		}
+		result := make([]Message, len(rows))
+		for i, row := range rows {
+			result[i] = Message{MessageID: row.MessageID, Sender: row.Sender, Text: row.Text, Truncated: row.Truncated}
+		}
+		return result, nil
+	})
 }

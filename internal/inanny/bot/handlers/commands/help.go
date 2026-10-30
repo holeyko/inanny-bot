@@ -107,9 +107,12 @@ func helpText(section string) string {
 		lines = []string{
 			"AI features",
 			"/summarize, /summarise, /sum - summarize a replied conversation",
+			"/ai quota - remaining/total daily DeepSeek Flash requests for this chat",
 			"",
 			"Flags: none.",
-			"Uses up to the last 10,000 words and follows the conversation's main language.",
+			"Uses the most recent messages within the configured input budget (at most 10,000 words) and follows the conversation's main language.",
+			"DeepSeek Flash via OpenRouter: 20 attempts per chat per UTC day, then the default provider. Errors also fall back to the default provider.",
+			"One summary at a time per chat; output and global concurrency are limited.",
 			"Example: reply to the first message, then send /sum",
 		}
 	case helpCallbackMain:
@@ -117,6 +120,7 @@ func helpText(section string) string {
 			"Innany commands",
 			"/help, /man - show this help",
 			"/hello - say hello",
+			"/ai quota - view this chat's daily AI quota",
 			"/summarize, /summarise, /sum - summarize a replied conversation",
 			"/commands - manage custom commands",
 			"/crew - manage and mention crews",

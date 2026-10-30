@@ -83,6 +83,14 @@ func handleRequest(bot *tgbot.BotAPI, update *tgbot.Update) {
 func tryHandleMessage(bot *tgbot.BotAPI, update *tgbot.Update) (err error) {
 	if message := update.Message; message != nil {
 		if err := storeMessage(message); err != nil {
+			// AI commands own their degraded-mode responses. In particular, quota
+			// inspection must not be hidden behind a failed history write.
+			handler := commands.FindCommandHandler(message.Command())
+			switch handler.(type) {
+			case commands.AICommandHandler, commands.SummarizeCommandHandler:
+				log.Printf("message persistence unavailable for AI command chat=%d", message.Chat.ID)
+				return handler.Handle(bot, update)
+			}
 			return err
 		}
 

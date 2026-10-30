@@ -19,9 +19,14 @@ var (
 )
 
 func Execute[T any](f func(q *queries.Queries) (T, error)) (T, error) {
+	return ExecuteContext(context.Background(), f)
+}
+
+// ExecuteContext bounds both connection establishment and the caller's queries.
+func ExecuteContext[T any](ctx context.Context, f func(q *queries.Queries) (T, error)) (T, error) {
 	var result T
 
-	conn, err := pgx.Connect(context.Background(), connectionString)
+	conn, err := pgx.Connect(ctx, connectionString)
 	if err != nil {
 		return result, fmt.Errorf("exception while pooling connection: %w", err)
 	}
