@@ -12,7 +12,14 @@ The old bot remains running until the build and migrations succeed.
 ## Build cache
 
 The Dockerfile requires BuildKit and keeps Go modules and compiled packages in
-cache mounts. Reuse the same builder between deployments. `.dockerignore` keeps
+cache mounts. The workflow installs Buildx with `docker/setup-buildx-action`,
+using a named `docker-container` builder with `keep-state: true` so caches survive
+job cleanup. `make docker-build` explicitly uses `docker buildx build --load`:
+it cannot fall back to the legacy builder, and the resulting image is loaded into
+the local Docker daemon for `make docker-run`. Local builds also require the
+Docker Buildx plugin (`docker buildx version` should succeed).
+
+Reuse the same builder between deployments. `.dockerignore` keeps
 local configuration, Git metadata, and build artifacts out of the build context;
 only module files, `cmd/`, and `internal/` are copied into the builder.
 

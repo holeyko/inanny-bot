@@ -25,6 +25,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          name: inanny-production-builder
+          driver: docker-container
+          # Preserve cache mounts when the action removes its builder container.
+          keep-state: true
+
       - name: Build Docker image
         run: make docker-build
 

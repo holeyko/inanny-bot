@@ -103,7 +103,7 @@ db-bootstrap: docker-network
 docker-build:
 	@echo "Build docker image..."
 
-	docker build -t $(DOCKER_IMAGE):$(IMAGE_VERSION) .
+	docker buildx build --load -t $(DOCKER_IMAGE):$(IMAGE_VERSION) .
 
 docker-run: docker-network
 	@echo "Run docker container..."
