@@ -12,6 +12,7 @@ DB_PORT ?= 5432
 DB_HOST ?= $(DB_CONTAINER)
 POSTGRES_IMAGE ?= postgres:16
 LIQUIBASE_IMAGE ?= liquibase/liquibase:4.31
+BOT_STARTUP_TIMEOUT ?= 60
 
 export TELEGRAM_BOT_TOKEN
 export DEEPSEEK_API_TOKEN
@@ -34,7 +35,7 @@ export POSTGRES_PASSWORD = $(DB_PASSWORD)
 export POSTGRES_DB = $(DB_NAME)
 
 
-.PHONY: clean build run docker-network db-bootstrap docker-clean docker-build docker-run docker-bar deploy db-migrate bar
+.PHONY: clean build run docker-network db-bootstrap docker-clean docker-build docker-run docker-ready docker-diagnostics docker-bar deploy db-migrate bar
 
 
 clean:
@@ -92,12 +93,7 @@ db-bootstrap: docker-network
 	until docker exec $(DB_CONTAINER) pg_isready -U $(DB_USER) -d $(DB_NAME) > /dev/null 2>&1; do \
 		if [ $$elapsed -ge $$timeout ]; then \
 			echo "PostgreSQL did not become ready after $${timeout}s."; \
-			echo "Docker containers:"; \
-			docker ps -a; \
-			echo "PostgreSQL container details:"; \
-			docker inspect $(DB_CONTAINER) || true; \
-			echo "PostgreSQL logs:"; \
-			docker logs --tail 200 $(DB_CONTAINER) || true; \
+			$(MAKE) docker-diagnostics; \
 			exit 1; \
 		fi; \
 		sleep 2; \
@@ -134,11 +130,42 @@ docker-run: docker-network
 		-e DB_NAME \
 		--name $(DOCKER_CONTAINER) \
 		$(DOCKER_IMAGE):$(IMAGE_VERSION)
-	@sleep 5
-	@echo "Bot container status after startup:"
-	@docker ps -a --filter name=$(DOCKER_CONTAINER)
-	@echo "Bot container logs after startup:"
-	@docker logs --tail 100 $(DOCKER_CONTAINER) || true
+	@$(MAKE) docker-ready
+
+# The application emits this marker after DB and Telegram polling probes pass.
+# Container existence alone is not ready.
+docker-ready:
+	@echo "Wait for bot startup (up to $(BOT_STARTUP_TIMEOUT)s)..."
+	@elapsed=0; \
+	while :; do \
+		state=$$(docker inspect -f '{{.State.Status}} {{.RestartCount}}' $(DOCKER_CONTAINER)) || exit 1; \
+		if [ "$$state" != "running 0" ]; then \
+			echo "Bot startup failed: $$state"; \
+			$(MAKE) docker-diagnostics; \
+			exit 1; \
+		fi; \
+		if docker logs --tail 100 $(DOCKER_CONTAINER) 2>&1 | grep -Fq 'Telegram bot Innany startup checks passed'; then \
+			state=$$(docker inspect -f '{{.State.Status}} {{.RestartCount}}' $(DOCKER_CONTAINER)) || exit 1; \
+			[ "$$state" = "running 0" ] || exit 1; \
+			echo "Bot startup confirmed."; \
+			exit 0; \
+		fi; \
+		if [ $$elapsed -ge $(BOT_STARTUP_TIMEOUT) ]; then \
+			echo "Bot did not become ready after $(BOT_STARTUP_TIMEOUT)s."; \
+			$(MAKE) docker-diagnostics; \
+			exit 1; \
+		fi; \
+		sleep 1; \
+		elapsed=$$((elapsed + 1)); \
+	done
+
+# Never dump Config.Env: it contains database credentials and API tokens.
+docker-diagnostics:
+	@for container in $(DB_CONTAINER) $(DOCKER_CONTAINER); do \
+		echo "Container: $$container"; \
+		docker inspect -f 'State={{.State.Status}} ExitCode={{.State.ExitCode}} Restarts={{.RestartCount}} Mounts={{json .Mounts}} Networks={{json .NetworkSettings.Networks}}' $$container || true; \
+		docker logs --tail 200 --since 10m $$container || true; \
+	done
 
 docker-bar: docker-build docker-clean docker-run
 	

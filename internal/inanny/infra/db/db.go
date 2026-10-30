@@ -18,6 +18,16 @@ var (
 	connectionString = fmt.Sprintf("postgres://%s:%s@%s/%s", user, password, host, dbname)
 )
 
+// Ping verifies connectivity using the same configuration as application queries.
+func Ping(ctx context.Context) error {
+	conn, err := pgx.Connect(ctx, connectionString)
+	if err != nil {
+		return err
+	}
+	defer conn.Close(ctx)
+	return conn.Ping(ctx)
+}
+
 func Execute[T any](f func(q *queries.Queries) (T, error)) (T, error) {
 	return ExecuteContext(context.Background(), f)
 }

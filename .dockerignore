@@ -1,0 +1,12 @@
+.git
+.github
+local
+build
+.vscode
+.code
+.idea
+**/.DS_Store
+libs
+docs
+migrate
+config

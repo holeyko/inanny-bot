@@ -6,25 +6,17 @@ on:
       - main
   workflow_dispatch:
 
-# Every job runs on the same self-hosted runner machine, so Docker images,
-# containers, networks, and volumes are shared between jobs.
+# Do not interrupt migrations or leave the bot stopped during replacement.
+concurrency:
+  group: inanny-production-deploy
+  cancel-in-progress: false
+
 jobs:
-  build:
-    name: Build bot image
+  deploy:
+    name: Build and deploy bot
     runs-on: self-hosted
     env:
       IMAGE_VERSION: ${{ github.sha }}
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Build Docker image
-        run: make docker-build
-
-  db-bootstrap:
-    name: Ensure database is running
-    runs-on: self-hosted
-    env:
       DB_USER: ${{ secrets.DB_USER }}
       DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
       DB_NAME: ${{ secrets.DB_NAME }}
@@ -33,84 +25,34 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Temporary diagnostics for the self-hosted runner. Remove after the
-      # PostgreSQL bootstrap issue is confirmed fixed.
-      - name: Temporary Docker diagnostics before DB bootstrap
-        run: |
-          docker ps -a
-          docker volume ls
-          docker network ls
-          docker logs inanny-postgres || true
+      - name: Build Docker image
+        run: make docker-build
 
       - name: Start PostgreSQL if needed
         run: make db-bootstrap
 
-      # Keep this step temporary. It helps confirm whether the DB container,
-      # volume, and network are in the expected state after bootstrap.
-      - name: Temporary Docker diagnostics after DB bootstrap
-        if: always()
-        run: |
-          docker ps -a
-          docker volume ls
-          docker network inspect inanny-network || true
-          docker inspect inanny-postgres || true
-          docker logs inanny-postgres || true
-
-  db-migrate:
-    name: Run database migrations
-    runs-on: self-hosted
-    needs:
-      - build
-      - db-bootstrap
-    env:
-      DB_USER: ${{ secrets.DB_USER }}
-      DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
-      DB_NAME: ${{ secrets.DB_NAME }}
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
       - name: Apply Liquibase migrations
         run: make db-migrate
 
-  rm-previous-containers:
-    name: Remove previous bot container
-    runs-on: self-hosted
-    needs: db-migrate
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - name: Replace bot and verify startup
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          GOOGLE_AI_STUDIO_API_KEY: ${{ secrets.GOOGLE_AI_STUDIO_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          CHATGPT_API_TOKEN: ${{ secrets.CHATGPT_API_TOKEN }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL }}
+          AI_MAX_INPUT_CHARS: ${{ vars.AI_MAX_INPUT_CHARS }}
+          AI_MAX_OUTPUT_TOKENS: ${{ vars.AI_MAX_OUTPUT_TOKENS }}
+          AI_MAX_CONCURRENT_SUMMARIES: ${{ vars.AI_MAX_CONCURRENT_SUMMARIES }}
+          DEBUG: ${{ vars.DEBUG || 'false' }}
+          DB_HOST: inanny-postgres
+        run: |
+          make docker-clean
+          make docker-run
 
-      - name: Stop and remove old bot container
-        run: make docker-clean
-
-  run-tg-bot:
-    name: Run Telegram bot
-    runs-on: self-hosted
-    needs: rm-previous-containers
-    env:
-      IMAGE_VERSION: ${{ github.sha }}
-      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-      GOOGLE_AI_STUDIO_API_KEY: ${{ secrets.GOOGLE_AI_STUDIO_API_KEY }}
-      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-      GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
-      CHATGPT_API_TOKEN: ${{ secrets.CHATGPT_API_TOKEN }}
-      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-      OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL }}
-      AI_MAX_INPUT_CHARS: ${{ vars.AI_MAX_INPUT_CHARS }}
-      AI_MAX_OUTPUT_TOKENS: ${{ vars.AI_MAX_OUTPUT_TOKENS }}
-      AI_MAX_CONCURRENT_SUMMARIES: ${{ vars.AI_MAX_CONCURRENT_SUMMARIES }}
-      DB_USER: ${{ secrets.DB_USER }}
-      DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
-      DB_NAME: ${{ secrets.DB_NAME }}
-      DEBUG: ${{ vars.DEBUG || 'false' }}
-      # The bot runs inside Docker, so it reaches Postgres by container name
-      # over the internal Docker network created by make db-bootstrap.
-      DB_HOST: inanny-postgres
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Start new bot container
-        run: make docker-run
+      - name: Bounded deployment diagnostics
+        if: failure()
+        run: make docker-diagnostics

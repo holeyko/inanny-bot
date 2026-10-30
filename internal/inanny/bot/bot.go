@@ -1,8 +1,10 @@
 package bot
 
 import (
+	"context"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -12,6 +14,7 @@ import (
 	customcommands "github.com/holeyko/innany-tgbot/internal/inanny/features/customcommands"
 	messages "github.com/holeyko/innany-tgbot/internal/inanny/features/messages"
 	polls "github.com/holeyko/innany-tgbot/internal/inanny/features/polls"
+	"github.com/holeyko/innany-tgbot/internal/inanny/infra/db"
 )
 
 var messageRepository = messages.NewRepository()
@@ -55,6 +58,11 @@ func buildUpdateConfig() tgbot.UpdateConfig {
 }
 
 func startHandeRequests(bot *tgbot.BotAPI) {
+	// Preserve degraded-mode operation, but do not report a successful deployment
+	// unless the bot's own DB configuration and a Telegram polling request work.
+	if startupReady(bot) {
+		log.Println("Telegram bot Innany startup checks passed")
+	}
 	updates := bot.GetUpdatesChan(buildUpdateConfig())
 	log.Println("Telegram bot Innany was started")
 	debugLog("telegram update polling started")
@@ -63,6 +71,37 @@ func startHandeRequests(bot *tgbot.BotAPI) {
 		debugLog("received update id=%d has_message=%t has_callback=%t", update.UpdateID, update.Message != nil, update.CallbackQuery != nil)
 		go handleRequest(bot, &update)
 	}
+}
+
+func startupReady(bot *tgbot.BotAPI) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := db.Ping(ctx); err != nil {
+		log.Println("Bot startup check failed: database unavailable")
+		return false
+	}
+	// Offset zero does not acknowledge pending updates. The normal poller below
+	// will receive and handle them; this request only checks polling availability.
+	probe := tgbot.NewUpdate(0)
+	probe.Limit = 1
+	// Copy the bot so scheduled tasks retain their normal HTTP client. The
+	// probe's context bounds network I/O as well as the database check above.
+	probeBot := *bot
+	probeBot.Client = startupHTTPClient{ctx: ctx, client: bot.Client}
+	if _, err := probeBot.GetUpdates(probe); err != nil {
+		log.Println("Bot startup check failed: Telegram polling unavailable")
+		return false
+	}
+	return true
+}
+
+type startupHTTPClient struct {
+	ctx    context.Context
+	client tgbot.HTTPClient
+}
+
+func (client startupHTTPClient) Do(request *http.Request) (*http.Response, error) {
+	return client.client.Do(request.WithContext(client.ctx))
 }
 
 func handleRequest(bot *tgbot.BotAPI, update *tgbot.Update) {
