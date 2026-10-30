@@ -113,6 +113,7 @@ func helpText(section string) string {
 			"Uses the most recent messages within the configured input budget (at most 10,000 words) and follows the conversation's main language.",
 			"DeepSeek Flash via OpenRouter: 20 attempts per chat per UTC day, then the default provider. Errors also fall back to the default provider.",
 			"One summary at a time per chat; output and global concurrency are limited.",
+			"Long summaries are sent in multiple messages.",
 			"Example: reply to the first message, then send /sum",
 		}
 	case helpCallbackMain:

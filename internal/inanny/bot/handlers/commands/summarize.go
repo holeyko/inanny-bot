@@ -7,6 +7,7 @@ import (
 	"log"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	tgbot "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -210,23 +211,56 @@ func sendSummary(bot *tgbot.BotAPI, message *tgbot.Message, text string) error {
 		if i == 0 {
 			messageConfig.ReplyToMessageID = message.MessageID
 		}
-		if _, err := bot.Send(messageConfig); err != nil {
-			return err
+		for attempt := 0; ; attempt++ {
+			_, err := bot.Send(messageConfig)
+			if err == nil {
+				break
+			}
+			var apiError *tgbot.Error
+			if attempt >= 3 || !errors.As(err, &apiError) || apiError.Code != 429 || apiError.RetryAfter <= 0 {
+				return fmt.Errorf("send summary part %d/%d: %w", i+1, len(chunks), err)
+			}
+			// Retry only the rejected chunk, without duplicating earlier parts.
+			time.Sleep(time.Duration(apiError.RetryAfter) * time.Second)
 		}
 	}
 	return nil
 }
 
 func splitTelegramMessage(text string) []string {
-	runes := []rune(text)
-	chunks := make([]string, 0, (len(runes)+maxTelegramMessageLen-1)/maxTelegramMessageLen)
-	for len(runes) > 0 {
-		chunkLength := maxTelegramMessageLen
-		if len(runes) < chunkLength {
-			chunkLength = len(runes)
+	var chunks []string
+	for len(text) > 0 {
+		units, end, lineBreak, wordBreak := 0, 0, 0, 0
+		for offset, r := range text {
+			// Count supplementary characters (such as emoji) as two UTF-16
+			// units, keeping chunks safe for Telegram without splitting UTF-8.
+			width := 1
+			if r > 0xffff {
+				width = 2
+			}
+			if units+width > maxTelegramMessageLen {
+				break
+			}
+			units += width
+			end = offset + utf8.RuneLen(r)
+			if units >= maxTelegramMessageLen/2 {
+				if r == '\n' {
+					lineBreak = end
+				}
+				if unicode.IsSpace(r) {
+					wordBreak = end
+				}
+			}
 		}
-		chunks = append(chunks, string(runes[:chunkLength]))
-		runes = runes[chunkLength:]
+		if end < len(text) {
+			if lineBreak > 0 {
+				end = lineBreak
+			} else if wordBreak > 0 {
+				end = wordBreak
+			}
+		}
+		chunks = append(chunks, text[:end])
+		text = text[end:]
 	}
 	return chunks
 }
