@@ -40,6 +40,7 @@ var commandHandlers = [...]handlers.TgUpdateHandler[string]{
 	NewPollsCommandHandler(),
 	NewCommandsCommandHandler(),
 	NewCrewCommandHandler(),
+	NewCrewsCommandHandler(),
 	NewHelloCommandHandler(),
 	NewDefaultSummarizeCommandHandler(),
 }

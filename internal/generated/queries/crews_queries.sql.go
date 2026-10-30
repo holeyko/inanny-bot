@@ -164,3 +164,30 @@ func (q *Queries) ListCrewMembersByID(ctx context.Context, crewID int64) ([]stri
 	}
 	return items, nil
 }
+
+const listCrewNamesByChat = `-- name: ListCrewNamesByChat :many
+SELECT name
+FROM crews
+WHERE chat_id = $1
+ORDER BY name
+`
+
+func (q *Queries) ListCrewNamesByChat(ctx context.Context, chatID int64) ([]string, error) {
+	rows, err := q.db.Query(ctx, listCrewNamesByChat, chatID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		items = append(items, name)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}

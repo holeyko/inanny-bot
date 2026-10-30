@@ -88,6 +88,7 @@ func helpText(section string) string {
 	case helpCallbackCrews:
 		lines = []string{
 			"Crews",
+			"/crews - list all crews in this chat",
 			"/crew <name> - mention all members of a crew",
 			"@<name> - mention all members in a regular chat message",
 			"/crew create <name> <username1> <username2> ... - create a crew",
@@ -119,6 +120,7 @@ func helpText(section string) string {
 			"/summarize, /summarise, /sum - summarize a replied conversation",
 			"/commands - manage custom commands",
 			"/crew - manage and mention crews",
+			"/crews - list all crews in this chat",
 			"/poll, /p - create a custom poll",
 			"/bin_poll, /bp - create a Да/Нет poll",
 			"/tripple_poll, /tp - create a Да/Нет/Тык poll",

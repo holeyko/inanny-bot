@@ -8,6 +8,12 @@ SELECT id, chat_id, creator_user_id, name, created_at
 FROM crews
 WHERE chat_id = $1 AND name = $2;
 
+-- name: ListCrewNamesByChat :many
+SELECT name
+FROM crews
+WHERE chat_id = $1
+ORDER BY name;
+
 -- name: ListCrewMembersByID :many
 SELECT u.telegram_login
 FROM crew_members cm

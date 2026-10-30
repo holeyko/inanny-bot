@@ -110,6 +110,12 @@ func CreateCrew(dto CreateCrewDto) (*Crew, error) {
 	})
 }
 
+func ListCrewNamesByChat(chatID int64) ([]string, error) {
+	return db.Execute(func(q *queries.Queries) ([]string, error) {
+		return q.ListCrewNamesByChat(context.Background(), chatID)
+	})
+}
+
 func GetCrewByChatAndName(chatID int64, name string) (*Crew, error) {
 	return db.Execute(func(q *queries.Queries) (*Crew, error) {
 		storedCrew, err := q.GetCrewByChatAndName(context.Background(), queries.GetCrewByChatAndNameParams{

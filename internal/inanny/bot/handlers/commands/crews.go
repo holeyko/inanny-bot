@@ -14,6 +14,42 @@ type CrewCommandHandler struct {
 	CommandHandler
 }
 
+type CrewsCommandHandler struct {
+	CommandHandler
+}
+
+func (handler CrewsCommandHandler) Handle(bot *tgbot.BotAPI, update *tgbot.Update) error {
+	if strings.TrimSpace(update.Message.CommandArguments()) != "" {
+		return errors.New("Usage: /crews")
+	}
+
+	names, err := crews.ListCrewNamesByChat(update.Message.Chat.ID)
+	if err != nil {
+		return err
+	}
+	if len(names) == 0 {
+		return sendCrewReply(bot, update, "No crews in this chat")
+	}
+
+	text := "Crews:"
+	for _, name := range names {
+		line := "\n" + name
+		// Keep each message below Telegram's limit, including Unicode names.
+		if len(text)+len(line) > 4000 {
+			if err := sendCrewReply(bot, update, text); err != nil {
+				return err
+			}
+			text = "Crews:"
+		}
+		text += line
+	}
+	return sendCrewReply(bot, update, text)
+}
+
+func NewCrewsCommandHandler() CrewsCommandHandler {
+	return CrewsCommandHandler{CommandHandler: CommandHandler{command: "crews"}}
+}
+
 const maxCrewMentionsPerMessage = 5
 
 func (handler CrewCommandHandler) Handle(bot *tgbot.BotAPI, update *tgbot.Update) error {
