@@ -16,12 +16,25 @@ jobs:
     runs-on: self-hosted
     env:
       IMAGE_VERSION: ${{ github.sha }}
-      DB_URL: ${{ secrets.DB_URL }}
+      # Empty URLs select managed local stacks; explicit URLs never bootstrap.
+      POSTGRES_URL: ${{ secrets.POSTGRES_URL }}
+      POSTGRES_USER: ${{ vars.POSTGRES_USER }}
+      POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+      POSTGRES_DB: ${{ vars.POSTGRES_DB }}
+      DB_HOST: ${{ vars.DB_HOST }}
+      DB_USER: ${{ vars.DB_USER }}
+      DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+      DB_NAME: ${{ vars.DB_NAME }}
       GRAFANA_URL: ${{ vars.GRAFANA_URL }}
+      GRAFANA_PORT: ${{ vars.GRAFANA_PORT || '3000' }}
       GRAFANA_ADMIN_USER: ${{ vars.GRAFANA_ADMIN_USER || 'admin' }}
       GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
+      GRAFANA_ADMIN: ${{ vars.GRAFANA_ADMIN }}
+      GRAFANA_PASSWORD: ${{ secrets.GRAFANA_PASSWORD }}
       GRAFANA_HEALTH_TOKEN: ${{ secrets.GRAFANA_HEALTH_TOKEN }}
       MIGRATION_DB_URL: ${{ secrets.MIGRATION_DB_URL }}
+      LIQUIBASE_COMMAND_USERNAME: ${{ vars.LIQUIBASE_COMMAND_USERNAME }}
+      LIQUIBASE_COMMAND_PASSWORD: ${{ secrets.LIQUIBASE_COMMAND_PASSWORD }}
       DB_TLS_DIR: ${{ vars.DB_TLS_DIR }}
       POSTGRES_IMAGE: ${{ vars.POSTGRES_IMAGE || 'postgres:16' }}
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -47,8 +60,8 @@ jobs:
           driver: docker-container
           keep-state: true
       - name: Build, ensure dependencies, check, migrate, replace
-        # ENV_FILE=/dev/null ensures CI uses only its explicitly provided settings.
-        run: make deploy ENV_FILE=/dev/null
+        # Deployment reads only the job's environment variables.
+        run: make deploy
       - name: Bounded deployment diagnostics
         if: failure()
-        run: make docker-diagnostics ENV_FILE=/dev/null
+        run: make docker-diagnostics

@@ -3,20 +3,27 @@ package db
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"os"
 
 	"github.com/holeyko/innany-tgbot/internal/generated/queries"
 	"github.com/jackc/pgx/v5"
 )
 
-var (
-	host     = os.Getenv("DB_HOST")
-	user     = os.Getenv("DB_USER")
-	password = os.Getenv("DB_PASSWORD")
-	dbname   = os.Getenv("DB_NAME")
+var connectionString = databaseURL()
 
-	connectionString = fmt.Sprintf("postgres://%s:%s@%s/%s", user, password, host, dbname)
-)
+func databaseURL() string {
+	if explicit := os.Getenv("POSTGRES_URL"); explicit != "" {
+		return explicit // pgx handles URI credentials, ports and options natively.
+	}
+	connection := url.URL{
+		Scheme: "postgres",
+		Host:   os.Getenv("DB_HOST"),
+		User:   url.UserPassword(os.Getenv("DB_USER"), os.Getenv("DB_PASSWORD")),
+		Path:   "/" + os.Getenv("DB_NAME"),
+	}
+	return connection.String()
+}
 
 // Ping verifies connectivity using the same configuration as application queries.
 func Ping(ctx context.Context) error {

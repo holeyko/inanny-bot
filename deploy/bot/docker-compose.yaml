@@ -8,10 +8,11 @@ services:
     restart: unless-stopped
     environment:
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
-      DB_HOST: ${DB_HOST:?Use make deploy to resolve DB_URL}
-      DB_USER: ${DB_USER:?Set DB_USER}
-      DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD}
-      DB_NAME: ${DB_NAME:?Set DB_NAME}
+      POSTGRES_URL: ${POSTGRES_URL:-}
+      DB_HOST: ${DB_HOST:-inanny-postgres:5432}
+      DB_USER: ${DB_USER:-${POSTGRES_USER:-}}
+      DB_PASSWORD: ${DB_PASSWORD:-${POSTGRES_PASSWORD:-}}
+      DB_NAME: ${DB_NAME:-${POSTGRES_DB:-}}
       DEEPSEEK_API_TOKEN: ${DEEPSEEK_API_TOKEN:-}
       CHATGPT_API_TOKEN: ${CHATGPT_API_TOKEN:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
@@ -25,6 +26,8 @@ services:
       GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
       DEBUG: ${DEBUG:-false}
     networks: [inanny]
+    extra_hosts:
+      - host.docker.internal:host-gateway
     volumes:
       - ${DB_TLS_DIR:-../../local/db-tls}:/run/db-tls:ro
     logging:

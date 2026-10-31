@@ -11,59 +11,70 @@ deployment shell scripts. The three independently operable runtime stacks are:
 
 `deploy/compose.build.yaml` is only a credential-free image build fragment, not
 a fourth runtime stack. `deploy/Dockerfile` builds `cmd/inanny/main.go` and runs
-`/app/main`. `deploy/config.py` is a small Python standard-library URL adapter:
-it asks Compose to resolve the env file, validates URLs, translates their
-components into the existing application's DB environment and JDBC settings,
-then execs Make. It contains no deployment stages or service orchestration.
+`/app/main`. Make invokes Compose directly. There is no URL resolver, Python
+dependency or deployment helper script: the app and PostgreSQL probe consume
+`POSTGRES_URL` natively, and Liquibase consumes its own JDBC URL.
 
 ## Configuration and placement
 
-Requires Docker Engine, Compose v2, Buildx and Python 3 on the intended bot Docker
+Existing environment names are supported for local services: `DB_USER`,
+`DB_PASSWORD`, and `DB_NAME` map to PostgreSQL credentials; `GRAFANA_ADMIN` and
+`GRAFANA_PASSWORD` map to Grafana admin credentials. When nonempty, these names
+take precedence over the corresponding `POSTGRES_*` / `GRAFANA_ADMIN_*` settings.
+Explicit service URLs still take precedence over local credentials.
+
+Requires Docker Engine, Compose v2 and Buildx on the intended bot Docker
 host. Execute from this checkout **on that host**, directly or through SSH.
 Bind mounts refer to that host's checkout. Do not point a laptop checkout at a
 remote Docker context: configuration, SQL and certificate mounts would be wrong.
 
 ```sh
-mkdir -p local
-cp deploy/.env.example local/deploy.env
-chmod 600 local/deploy.env
-# Edit DB_URL, GRAFANA_URL, Telegram token and local Grafana admin password.
+unset POSTGRES_URL GRAFANA_URL
+export DB_HOST=inanny-postgres DB_USER=inanny DB_NAME=inanny
+export DB_PASSWORD='REPLACE_PASSWORD'
+export TELEGRAM_BOT_TOKEN='REPLACE_TOKEN'
+export GRAFANA_ADMIN=admin GRAFANA_PASSWORD='REPLACE_PASSWORD'
 make compose-check
 make deploy
 ```
 
-`ENV_FILE=/absolute/path/to/file` selects another file; absent default
-`local/deploy.env` means shell-only settings. Explicitly missing files fail.
-Exported shell values override file values, using Compose's own dotenv parsing.
+Deployment reads only exported process environment variables. It does not load
+env files; Compose's automatic `.env` loading and `COMPOSE_ENV_FILES` are disabled.
 Use single-line values; percent-encode special characters in URL components.
 Never print resolved Compose config or `config --environment`: both may contain
 secrets. `make compose-check` uses `config --quiet` instead.
 
 The canonical settings are:
 
-* `DB_URL=postgresql://USER:PASSWORD@HOST:PORT/DATABASE?sslmode=...`
-* `GRAFANA_URL=http[s]://HOST:PORT[/optional-remote-subpath]`
-* `TELEGRAM_BOT_TOKEN`, plus any optional AI settings in `deploy/.env.example`.
+* Optional `POSTGRES_URL=postgresql://USER:PASSWORD@HOST:PORT/DATABASE?sslmode=...`
+* Optional `GRAFANA_URL=http[s]://HOST:PORT[/optional-remote-subpath]`
+* `TELEGRAM_BOT_TOKEN`, plus any optional AI settings in `deploy/environment.md`.
 
-Placement uses the **parsed exact hostname**, not a string prefix. `localhost`,
-`127.0.0.1` and `::1` mean the local Docker host. A hostname such as
-`localhost.example.com` is remote. URLs cannot contain fragments; Grafana URLs
-cannot contain credentials or queries. There are no fake runtime credentials.
+Placement uses **only whether each URL is nonempty**, never its hostname.
+An absent or empty URL bootstraps that local dependency; any explicit URL,
+including `localhost`, `127.0.0.1` and `::1`, selects an externally managed
+dependency and never starts its local stack. Use PostgreSQL connection URIs and
+a Grafana base HTTP(S) URL without a query or fragment. There are no fake runtime
+credentials. URLs are passed to their clients without rewriting or custom parsing.
 
 ### Local dependencies
 
-Local `DB_URL` selects the managed `inanny-postgres` container, on internal port
-5432; another localhost DB port is rejected rather than silently targeting the
-wrong database. The DB is not published on the host. Localhost in this URL is a
-**placement selector**, not loopback inside the bot. It becomes
-`inanny-postgres:5432` for bot, authenticated probe and Liquibase.
-An unrelated host PostgreSQL instance is not automatically adopted.
+Absent/empty `POSTGRES_URL` selects the managed `inanny-postgres:5432` for bot,
+authenticated probe and Liquibase. Required `DB_USER`, `DB_PASSWORD` and `DB_NAME`
+(or `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`) supply its credentials;
+no password is invented. `DB_HOST` defaults to `inanny-postgres`; use a hostname
+without a port for these raw settings (the default port is 5432). It is accepted
+directly, not overwritten: if it points elsewhere, local PostgreSQL still starts
+because only `POSTGRES_URL` controls placement. The DB is not
+published on the host. Existing data and credentials must match these values;
+initialization settings do not rotate users/passwords on an existing volume.
 
-Local `GRAFANA_URL` must be `http://localhost:PORT` (or another exact loopback
-host), without a subpath. Its port controls the loopback-only published Grafana
+Absent/empty `GRAFANA_URL` selects the whole local logging stack.
+`GRAFANA_PORT` (default 3000) controls the loopback-only published Grafana
 port; container probes use `http://grafana:3000`. This starts **all three** of
-Grafana, Loki and Alloy on the bot host. `GRAFANA_ADMIN_PASSWORD` is required;
-`GRAFANA_ADMIN_USER` defaults to `admin`. Existing Grafana passwords are not
+Grafana, Loki and Alloy on the bot host. `GRAFANA_PASSWORD` (or
+`GRAFANA_ADMIN_PASSWORD`) is required; `GRAFANA_ADMIN` (or `GRAFANA_ADMIN_USER`)
+defaults to `admin`. Existing Grafana passwords are not
 reset by changing init environment variables.
 
 `up --no-recreate` leaves existing database and logging containers intact,
@@ -78,31 +89,42 @@ a planned upgrade. Set `POSTGRES_IMAGE` to the current database major version.
 
 ### Remote dependencies
 
-Non-loopback `DB_URL` connects directly over `inanny-network` to the external
+Nonempty `POSTGRES_URL` connects over `inanny-network` to the external
 database, preserving its port, encoded credentials, database name and libpq URL
 options. No local PostgreSQL is started or modified. Allow network access from
 the bot Docker host, provision the database/user in advance and use suitable TLS.
 
-The existing Go app constructs a URL from `DB_HOST`, `DB_USER`, `DB_PASSWORD`,
-`DB_NAME`. The adapter keeps the user/password/database URL-encoded, includes
-the port in `DB_HOST`, and appends the unchanged query to `DB_NAME`; it does not
-alter the application's Go DB code. PostgreSQL initialization and Liquibase use
-the decoded credentials instead. Do not pass the derived app variables as raw
-PostgreSQL initialization settings.
+The Go app gives nonempty `POSTGRES_URL` precedence over all raw `DB_*` settings.
+With no URL it uses Go's native URL encoding for raw credentials/database names.
+The `psql` probe also consumes `POSTGRES_URL` directly. No URI options are removed
+or converted by Make.
 
-Automatic JDBC translation supports `sslmode`, `sslrootcert`, `sslcert`,
-`sslkey`, `connect_timeout` -> `connectTimeout`, `application_name` ->
-`ApplicationName`, and `options`. Any other option requires an explicit
+For **every external database**, also set
 `MIGRATION_DB_URL=jdbc:postgresql://HOST:PORT/DATABASE?...` with equivalent JDBC
-options; nothing is silently discarded. The override must target the same DB
-and security policy; credentials are passed separately. Client TLS formats can
+security/options. Make requires it rather than attempting URI-to-JDBC conversion.
+Supply Liquibase credentials as `LIQUIBASE_COMMAND_USERNAME` and
+`LIQUIBASE_COMMAND_PASSWORD` (falling back to `DB_USER`/`DB_PASSWORD`, then
+`POSTGRES_USER`/`POSTGRES_PASSWORD`), or in the JDBC URL using JDBC's own syntax.
+The JDBC URL must target the same DB and security policy as `POSTGRES_URL`.
+For local DB names requiring JDBC URL encoding, also supply `MIGRATION_DB_URL`
+explicitly; the default JDBC URL inserts the raw database name. Client TLS formats can
 differ between libpq/pgx and JDBC (especially private keys): provision compatible
 files and reference the appropriate ones in each URL. Set `DB_TLS_DIR` to an
 absolute host directory; it is mounted read-only at `/run/db-tls` for bot, DB
 probe and migration. URL certificate paths must be container paths, not host
 paths. With no certificates, the default mount is ignored local scratch storage.
 
-Non-loopback `GRAFANA_URL` means the **entire Grafana/Loki/Alloy stack is remote**.
+Explicit loopback URLs still select external dependencies, but `localhost`,
+`127.0.0.1` and `::1` inside a container refer to **that container**, not the Docker
+host. URLs are not rewritten. To reach a service on the Docker host, explicitly
+use `host.docker.internal` in both native/JDBC URLs or the Grafana URL. Containers
+map this to `host-gateway` (Docker Engine 20.10+ on Linux; Docker Desktop also
+supports it). The host service must listen on a gateway-reachable interface;
+restrict access with a firewall. For hostname-verifying TLS, use reachable DNS
+matching the certificate instead; verification is never disabled. With a remote
+Docker daemon the Docker host is not necessarily the shell's host.
+
+Nonempty `GRAFANA_URL` means the **entire Grafana/Loki/Alloy stack is remote**.
 No local logging component is deployed, including Alloy. The remote stack must
 already be provisioned and reachable from the bot network. Deployment probes
 `GRAFANA_URL/api/health`; provide optional `GRAFANA_HEALTH_TOKEN` for a bearer-auth
@@ -140,7 +162,7 @@ old inode. This is an explicit operator-managed transport, not an automatically
 provisioned or health-verified feature of `make deploy`.
 
 To provision the whole remote stack using this checkout, run on the logging
-host with `GRAFANA_URL=http://localhost:3000`, its admin credentials and forwarded
+host with `GRAFANA_URL` unset/empty, its admin credentials and forwarded
 socket configuration: `make logging-up`. On the bot host use its **remote**
 Grafana URL. The optional `local/logs` file source refers to the logging host's
 files, not files on the bot host. A single forwarded socket collects one Docker
@@ -184,7 +206,7 @@ Useful independent commands:
 The bot and PostgreSQL stacks intentionally retain the same historical project
 identity. Orphan removal is forcibly disabled. Never run project-wide `down`,
 `down -v` or `--remove-orphans`: the other independent stack is not an orphan to
-delete. Bare Compose commands bypass URL adaptation and ordered deployment;
+delete. Bare Compose commands bypass placement guards and ordered deployment;
 use the Make entrypoints.
 
 ## Legacy containers: explicit one-time maintenance
@@ -226,18 +248,22 @@ persists settings. Docker JSON logs rotate at 10 MB x 3 files; a collector outag
 can lose logs after rotation. This storage is not an off-host backup.
 
 `.github/workflows/deploy.yaml` calls the same `make deploy` on the intended
-self-hosted bot Docker host. Required secrets: `DB_URL`, `TELEGRAM_BOT_TOKEN`,
-and `GRAFANA_ADMIN_PASSWORD` only for local Grafana. Configure `GRAFANA_URL` as a
-repository variable; optional TLS/JDBC, health bearer and AI settings appear in
-the workflow/example. CI uses `ENV_FILE=/dev/null`, never a leftover host env
-file. Its concurrency group serializes deployments and does not cancel running
+self-hosted bot Docker host. Required secret: `TELEGRAM_BOT_TOKEN`. Optional
+`POSTGRES_URL` secret and `GRAFANA_URL` repository variable select external stacks.
+For local PostgreSQL, provide `DB_USER` and `DB_NAME` repository variables and
+`DB_PASSWORD` secret (or the `POSTGRES_*` fallbacks). Local Grafana requires
+`GRAFANA_PASSWORD` secret (or `GRAFANA_ADMIN_PASSWORD`); `GRAFANA_PORT` defaults
+to 3000. External DBs require `MIGRATION_DB_URL` and suitable JDBC credentials.
+Optional TLS/JDBC, health bearer and AI settings appear in
+the workflow/environment reference. CI uses only explicitly provided environment
+variables. Its concurrency group serializes deployments and does not cancel running
 migrations. Operators must also avoid overlapping manual runs.
 
 BuildKit caches Go modules/build output. The workflow uses a named Buildx
 `docker-container` builder with `keep-state: true`. Make resolves only the
 credential-free build fragment and passes it to `docker buildx bake -f - --load
 bot`, explicitly loading the image into the deployment daemon. No credentials
-or runtime services are needed: `make docker-build ENV_FILE=/dev/null` works.
+or runtime services are needed: `make docker-build` works.
 The runtime bot references the same `inanny-bot:${IMAGE_VERSION:-latest}` tag.
 `.dockerignore` excludes local config, Git metadata and build artifacts.
 

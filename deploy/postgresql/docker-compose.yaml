@@ -12,9 +12,9 @@ services:
     container_name: inanny-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:?Use make to resolve DB_URL}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Use make to resolve DB_URL}
-      POSTGRES_DB: ${POSTGRES_DB:?Use make to resolve DB_URL}
+      POSTGRES_USER: ${DB_USER:-${POSTGRES_USER:-}}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-${POSTGRES_PASSWORD:-}}
+      POSTGRES_DB: ${DB_NAME:-${POSTGRES_DB:-}}
     volumes:
       - postgres-data:/var/lib/postgresql/data
     networks: [inanny]
@@ -29,30 +29,35 @@ services:
     image: ${LIQUIBASE_IMAGE:-liquibase/liquibase:4.31}
     profiles: [tools]
     environment:
-      LIQUIBASE_COMMAND_URL: ${MIGRATION_DB_URL:?Use make to resolve DB_URL}
-      LIQUIBASE_COMMAND_USERNAME: ${LIQUIBASE_COMMAND_USERNAME:?Use make to resolve DB_URL}
-      LIQUIBASE_COMMAND_PASSWORD: ${LIQUIBASE_COMMAND_PASSWORD:?Use make to resolve DB_URL}
+      LIQUIBASE_COMMAND_URL: ${MIGRATION_DB_URL:-jdbc:postgresql://${DB_HOST:-inanny-postgres:5432}/${DB_NAME:-${POSTGRES_DB:-}}}
+      LIQUIBASE_COMMAND_USERNAME: ${LIQUIBASE_COMMAND_USERNAME:-${DB_USER:-${POSTGRES_USER:-}}}
+      LIQUIBASE_COMMAND_PASSWORD: ${LIQUIBASE_COMMAND_PASSWORD:-${DB_PASSWORD:-${POSTGRES_PASSWORD:-}}}
     volumes:
       - ../../migrate:/liquibase/changelog:ro
       - ${DB_TLS_DIR:-../../local/db-tls}:/run/db-tls:ro
     command: [--search-path=/liquibase/changelog, --changelog-file=changelog.xml, update]
     networks: [inanny]
+    extra_hosts:
+      - host.docker.internal:host-gateway
     logging: *logging
 
   db-check:
     image: ${POSTGRES_IMAGE:-postgres:16}
     profiles: [tools]
     environment:
-      PGDATABASE: ${PGDATABASE:?Use make to resolve DB_URL}
-      PGUSER: ${PGUSER:?Use make to resolve DB_URL}
-      PGPASSWORD: ${PGPASSWORD:?Use make to resolve DB_URL}
+      PGDATABASE: ${POSTGRES_URL:-${DB_NAME:-${POSTGRES_DB:-}}}
+      PGHOST: ${DB_HOST:-inanny-postgres}
+      PGUSER: ${DB_USER:-${POSTGRES_USER:-}}
+      PGPASSWORD: ${DB_PASSWORD:-${POSTGRES_PASSWORD:-}}
       PGCONNECT_TIMEOUT: "5"
     volumes:
       - ${DB_TLS_DIR:-../../local/db-tls}:/run/db-tls:ro
     entrypoint: [/bin/sh, -ec]
     command:
-      - 'i=0; until timeout 10 psql -X -v ON_ERROR_STOP=1 -Atc "SELECT 1" >/dev/null 2>&1; do i=$$((i+1)); if [ "$$i" -ge 12 ]; then echo "Authenticated database probe failed" >&2; exit 1; fi; sleep 2; done'
+      - 'i=0; until timeout 10 psql --dbname="$$PGDATABASE" -X -v ON_ERROR_STOP=1 -Atc "SELECT 1" >/dev/null 2>&1; do i=$$((i+1)); if [ "$$i" -ge 12 ]; then echo "Authenticated database probe failed" >&2; exit 1; fi; sleep 2; done'
     networks: [inanny]
+    extra_hosts:
+      - host.docker.internal:host-gateway
     logging: *logging
 
 networks:
