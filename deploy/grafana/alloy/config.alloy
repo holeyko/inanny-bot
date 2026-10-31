@@ -1,0 +1,76 @@
+// Ship bot logs to Loki.
+//
+// Two sources are collected:
+//   * stdout/stderr of inanny-* containers on the mounted Docker socket;
+//   * files written by a host-side `make run` (LOG_FILE=local/logs/bot.log).
+
+loki.write "default" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}
+
+discovery.docker "containers" {
+  host             = "unix:///var/run/docker.sock"
+  refresh_interval = "10s"
+}
+
+discovery.relabel "bot_containers" {
+  targets = discovery.docker.containers.targets
+
+  // Only inanny containers; the observability stack itself is excluded to
+  // avoid feeding Loki/Alloy/Grafana logs back into Loki.
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/inanny-.*"
+    action        = "keep"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/inanny-observability-.*"
+    action        = "drop"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/(.*)"
+    target_label  = "container"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_log_stream"]
+    target_label  = "stream"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_project"]
+    target_label  = "compose_project"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    target_label  = "compose_service"
+  }
+}
+
+loki.source.docker "containers" {
+  host             = "unix:///var/run/docker.sock"
+  targets          = discovery.relabel.bot_containers.output
+  forward_to       = [loki.write.default.receiver]
+  refresh_interval = "5s"
+}
+
+local.file_match "host_logs" {
+  path_targets = [{
+    __path__    = "/var/log/inanny/*.log",
+    job         = "inanny-local",
+    container   = "inanny-local",
+  }]
+}
+
+loki.source.file "host_logs" {
+  targets       = local.file_match.host_logs.targets
+  forward_to    = [loki.write.default.receiver]
+  tail_from_end = true
+}

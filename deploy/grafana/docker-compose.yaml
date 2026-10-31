@@ -1,0 +1,80 @@
+name: inanny-observability
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+# Grafana (web UI), Loki (log store) and Alloy (collector).
+# The stack is bound to loopback only; reach it through an SSH tunnel:
+#   ssh -L 3000:127.0.0.1:3000 <user>@<host>
+#   open http://127.0.0.1:3000
+
+services:
+  loki:
+    image: grafana/loki:3.5.1
+    logging: *logging
+    restart: unless-stopped
+    command: -config.file=/etc/loki/config.yaml
+    networks:
+      - inanny
+    ports:
+      - "127.0.0.1:${LOKI_PORT:-3100}:3100"
+    volumes:
+      - ./loki/config.yaml:/etc/loki/config.yaml:ro
+      - loki-data:/loki
+
+  alloy:
+    image: grafana/alloy:v1.9.0
+    logging: *logging
+    restart: unless-stopped
+    depends_on:
+      - loki
+    command:
+      - run
+      - --server.http.listen-addr=0.0.0.0:12345
+      - --storage.path=/var/lib/alloy/data
+      - /etc/alloy/config.alloy
+    networks:
+      - inanny
+    ports:
+      - "127.0.0.1:${ALLOY_PORT:-12345}:12345"
+    volumes:
+      # Read every container's stdout/stderr, including the bot's.
+      - ${ALLOY_DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock:ro
+      - ./alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - alloy-data:/var/lib/alloy/data
+      # Logs written by a host-side `make run` (LOG_FILE).
+      - ../../local/logs:/var/log/inanny:ro
+
+  grafana:
+    image: grafana/grafana:12.1.0
+    logging: *logging
+    restart: unless-stopped
+    depends_on:
+      - loki
+    networks:
+      - inanny
+    ports:
+      - "127.0.0.1:${GRAFANA_PORT:-3000}:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?Set GRAFANA_ADMIN_PASSWORD}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+
+networks:
+  inanny:
+    external: true
+    name: inanny-network
+
+volumes:
+  loki-data:
+  alloy-data:
+  grafana-data:

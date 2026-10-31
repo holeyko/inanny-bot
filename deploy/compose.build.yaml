@@ -1,0 +1,9 @@
+# Standalone credential-free image definition; not a runtime stack.
+name: inanny
+
+services:
+  bot:
+    image: inanny-bot:${IMAGE_VERSION:-latest}
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile

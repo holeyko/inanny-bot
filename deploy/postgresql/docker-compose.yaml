@@ -1,0 +1,66 @@
+name: inanny
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  postgres:
+    image: ${POSTGRES_IMAGE:-postgres:16}
+    container_name: inanny-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?Use make to resolve DB_URL}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Use make to resolve DB_URL}
+      POSTGRES_DB: ${POSTGRES_DB:?Use make to resolve DB_URL}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks: [inanny]
+    logging: *logging
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  migrate:
+    image: ${LIQUIBASE_IMAGE:-liquibase/liquibase:4.31}
+    profiles: [tools]
+    environment:
+      LIQUIBASE_COMMAND_URL: ${MIGRATION_DB_URL:?Use make to resolve DB_URL}
+      LIQUIBASE_COMMAND_USERNAME: ${LIQUIBASE_COMMAND_USERNAME:?Use make to resolve DB_URL}
+      LIQUIBASE_COMMAND_PASSWORD: ${LIQUIBASE_COMMAND_PASSWORD:?Use make to resolve DB_URL}
+    volumes:
+      - ../../migrate:/liquibase/changelog:ro
+      - ${DB_TLS_DIR:-../../local/db-tls}:/run/db-tls:ro
+    command: [--search-path=/liquibase/changelog, --changelog-file=changelog.xml, update]
+    networks: [inanny]
+    logging: *logging
+
+  db-check:
+    image: ${POSTGRES_IMAGE:-postgres:16}
+    profiles: [tools]
+    environment:
+      PGDATABASE: ${PGDATABASE:?Use make to resolve DB_URL}
+      PGUSER: ${PGUSER:?Use make to resolve DB_URL}
+      PGPASSWORD: ${PGPASSWORD:?Use make to resolve DB_URL}
+      PGCONNECT_TIMEOUT: "5"
+    volumes:
+      - ${DB_TLS_DIR:-../../local/db-tls}:/run/db-tls:ro
+    entrypoint: [/bin/sh, -ec]
+    command:
+      - 'i=0; until timeout 10 psql -X -v ON_ERROR_STOP=1 -Atc "SELECT 1" >/dev/null 2>&1; do i=$$((i+1)); if [ "$$i" -ge 12 ]; then echo "Authenticated database probe failed" >&2; exit 1; fi; sleep 2; done'
+    networks: [inanny]
+    logging: *logging
+
+networks:
+  inanny:
+    external: true
+    name: inanny-network
+
+volumes:
+  postgres-data:
+    external: true
+    name: inanny-postgres-data

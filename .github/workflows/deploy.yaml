@@ -2,11 +2,10 @@ name: Deploy Telegram Bot
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   workflow_dispatch:
 
-# Do not interrupt migrations or leave the bot stopped during replacement.
+# Never interrupt migrations or replacement; one writer per production host.
 concurrency:
   group: inanny-production-deploy
   cancel-in-progress: false
@@ -17,50 +16,39 @@ jobs:
     runs-on: self-hosted
     env:
       IMAGE_VERSION: ${{ github.sha }}
-      DB_USER: ${{ secrets.DB_USER }}
-      DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
-      DB_NAME: ${{ secrets.DB_NAME }}
-      DB_PORT: ${{ secrets.DB_PORT || '5432' }}
+      DB_URL: ${{ secrets.DB_URL }}
+      GRAFANA_URL: ${{ vars.GRAFANA_URL }}
+      GRAFANA_ADMIN_USER: ${{ vars.GRAFANA_ADMIN_USER || 'admin' }}
+      GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
+      GRAFANA_HEALTH_TOKEN: ${{ secrets.GRAFANA_HEALTH_TOKEN }}
+      MIGRATION_DB_URL: ${{ secrets.MIGRATION_DB_URL }}
+      DB_TLS_DIR: ${{ vars.DB_TLS_DIR }}
+      POSTGRES_IMAGE: ${{ vars.POSTGRES_IMAGE || 'postgres:16' }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      DEEPSEEK_API_TOKEN: ${{ secrets.DEEPSEEK_API_TOKEN }}
+      GOOGLE_AI_STUDIO_API_KEY: ${{ secrets.GOOGLE_AI_STUDIO_API_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+      CHATGPT_API_TOKEN: ${{ secrets.CHATGPT_API_TOKEN }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL }}
+      AI_MAX_INPUT_CHARS: ${{ vars.AI_MAX_INPUT_CHARS }}
+      AI_MAX_OUTPUT_TOKENS: ${{ vars.AI_MAX_OUTPUT_TOKENS }}
+      AI_MAX_CONCURRENT_SUMMARIES: ${{ vars.AI_MAX_CONCURRENT_SUMMARIES }}
+      DEBUG: ${{ vars.DEBUG || 'false' }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
         with:
           name: inanny-production-builder
           driver: docker-container
-          # Preserve cache mounts when the action removes its builder container.
           keep-state: true
-
-      - name: Build Docker image
-        run: make docker-build
-
-      - name: Start PostgreSQL if needed
-        run: make db-bootstrap
-
-      - name: Apply Liquibase migrations
-        run: make db-migrate
-
-      - name: Replace bot and verify startup
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          GOOGLE_AI_STUDIO_API_KEY: ${{ secrets.GOOGLE_AI_STUDIO_API_KEY }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
-          CHATGPT_API_TOKEN: ${{ secrets.CHATGPT_API_TOKEN }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-          OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL }}
-          AI_MAX_INPUT_CHARS: ${{ vars.AI_MAX_INPUT_CHARS }}
-          AI_MAX_OUTPUT_TOKENS: ${{ vars.AI_MAX_OUTPUT_TOKENS }}
-          AI_MAX_CONCURRENT_SUMMARIES: ${{ vars.AI_MAX_CONCURRENT_SUMMARIES }}
-          DEBUG: ${{ vars.DEBUG || 'false' }}
-          DB_HOST: inanny-postgres
-        run: |
-          make docker-clean
-          make docker-run
-
+      - name: Build, ensure dependencies, check, migrate, replace
+        # ENV_FILE=/dev/null ensures CI uses only its explicitly provided settings.
+        run: make deploy ENV_FILE=/dev/null
       - name: Bounded deployment diagnostics
         if: failure()
-        run: make docker-diagnostics
+        run: make docker-diagnostics ENV_FILE=/dev/null

@@ -1,43 +1,10 @@
-DOCKER_IMAGE = inanny-bot
-DOCKER_CONTAINER = inanny-bot
-DOCKER_NETWORK = inanny-network
-DB_CONTAINER = inanny-postgres
-DB_VOLUME = inanny-postgres-data
 MAIN_PATH = ./cmd/inanny/main.go
 BUILD_DIR = ./build
 APP = app
-
-IMAGE_VERSION ?= latest
-DB_PORT ?= 5432
-DB_HOST ?= $(DB_CONTAINER)
-POSTGRES_IMAGE ?= postgres:16
-LIQUIBASE_IMAGE ?= liquibase/liquibase:4.31
+ENV_FILE ?= local/deploy.env
 BOT_STARTUP_TIMEOUT ?= 60
 
-export TELEGRAM_BOT_TOKEN
-export DEEPSEEK_API_TOKEN
-export CHATGPT_API_TOKEN
-export OPENAI_API_KEY
-export OPENROUTER_API_KEY
-export OPENROUTER_MODEL
-export AI_MAX_INPUT_CHARS
-export AI_MAX_OUTPUT_TOKENS
-export AI_MAX_CONCURRENT_SUMMARIES
-export GOOGLE_AI_STUDIO_API_KEY
-export GEMINI_API_KEY
-export GOOGLE_API_KEY
-export DEBUG
-export DB_USER
-export DB_PASSWORD
-export DB_NAME
-export POSTGRES_USER = $(DB_USER)
-export POSTGRES_PASSWORD = $(DB_PASSWORD)
-export POSTGRES_DB = $(DB_NAME)
-
-
-.PHONY: clean build run docker-network db-bootstrap docker-clean docker-build docker-run docker-ready docker-diagnostics docker-bar deploy db-migrate bar
-
-
+.PHONY: clean build run bar
 clean:
 	go clean
 
@@ -50,142 +17,156 @@ run:
 
 bar: build run
 
-docker-clean:
-	@echo "Clean previous docker container..."
+# All orchestration is here. config.py only resolves dotenv and URL components.
+CONFIG = python3 deploy/config.py "$(ENV_FILE)"
+COMPOSE = docker compose --env-file "$(ENV_FILE)"
+BOT = $(COMPOSE) -p inanny -f deploy/bot/docker-compose.yaml
+DB = $(COMPOSE) -p inanny -f deploy/postgresql/docker-compose.yaml
+GRAFANA = $(COMPOSE) -p inanny-observability -f deploy/grafana/docker-compose.yaml
+IMAGE = $(COMPOSE) -p inanny -f deploy/compose.build.yaml
+export BOT_STARTUP_TIMEOUT
+# These projects intentionally share ownership; never remove the other stack.
+override export COMPOSE_IGNORE_ORPHANS := true
+override export COMPOSE_REMOVE_ORPHANS := false
 
-	@-docker stop $(DOCKER_CONTAINER) > /dev/null || true
-	@-docker rm $(DOCKER_CONTAINER) > /dev/null || true
-
-docker-network:
-	@echo "Ensure docker network exists..."
-
-	@docker network inspect $(DOCKER_NETWORK) > /dev/null 2>&1 || \
-		docker network create $(DOCKER_NETWORK) > /dev/null
-
-db-bootstrap: docker-network
-	@echo "Ensure PostgreSQL container is running..."
-
-	@docker volume inspect $(DB_VOLUME) > /dev/null 2>&1 || \
-		docker volume create $(DB_VOLUME) > /dev/null
-	@status=$$(docker inspect -f '{{.State.Status}}' $(DB_CONTAINER) 2> /dev/null || true); \
-	if [ "$$status" = "running" ]; then \
-		echo "PostgreSQL container is already running; leaving it untouched."; \
-	else \
-		if [ -n "$$status" ]; then \
-			echo "PostgreSQL container status is '$$status'; recreating container and preserving volume."; \
-			docker rm -f $(DB_CONTAINER) > /dev/null; \
-		fi; \
-		echo "Creating PostgreSQL container with persistent volume."; \
-		docker pull $(POSTGRES_IMAGE) > /dev/null; \
-		docker run -d \
-			--name $(DB_CONTAINER) \
-			--restart unless-stopped \
-			--network $(DOCKER_NETWORK) \
-			-v $(DB_VOLUME):/var/lib/postgresql/data \
-			-p $(DB_PORT) \
-			-e POSTGRES_USER \
-			-e POSTGRES_PASSWORD \
-			-e POSTGRES_DB \
-			$(POSTGRES_IMAGE) > /dev/null; \
-	fi
-	@echo "Wait for PostgreSQL to accept connections..."
-	@timeout=60; elapsed=0; \
-	until docker exec $(DB_CONTAINER) pg_isready -U $(DB_USER) -d $(DB_NAME) > /dev/null 2>&1; do \
-		if [ $$elapsed -ge $$timeout ]; then \
-			echo "PostgreSQL did not become ready after $${timeout}s."; \
-			$(MAKE) docker-diagnostics; \
-			exit 1; \
-		fi; \
-		sleep 2; \
-		elapsed=$$((elapsed + 2)); \
-	done
-
+.PHONY: deploy docker-deploy docker-bar docker-run compose-check docker-build \
+	db-bootstrap db-migrate logging-up logging-status deployment-check docker-network \
+	docker-ready docker-diagnostics docker-clean
+deploy docker-deploy docker-bar docker-run:
+	@$(CONFIG) all $(MAKE) --no-print-directory _deploy
+compose-check:
+	@$(CONFIG) all $(MAKE) --no-print-directory _compose-check
 docker-build:
-	@echo "Build docker image..."
+	@$(CONFIG) build $(MAKE) --no-print-directory _docker-build
+db-bootstrap:
+	@$(CONFIG) db $(MAKE) --no-print-directory _db-prepare
+db-migrate:
+	@$(CONFIG) db $(MAKE) --no-print-directory _db-deploy
+logging-up:
+	@$(CONFIG) grafana $(MAKE) --no-print-directory _logging-up
+logging-status:
+	@$(CONFIG) grafana $(MAKE) --no-print-directory _logging-status
+deployment-check:
+	@$(CONFIG) all $(MAKE) --no-print-directory _deployment-check
+docker-network docker-ready docker-diagnostics:
+	@$(CONFIG) build $(MAKE) --no-print-directory _$@
+docker-clean:
+	@$(CONFIG) all $(MAKE) --no-print-directory _docker-clean
 
-	docker buildx build --load -t $(DOCKER_IMAGE):$(IMAGE_VERSION) .
+.PHONY: _deploy _compose-check _docker-build _db-bootstrap _logging-up \
+	_network-check _db-check _grafana-check _db-migrate _bot-replace \
+	_deployment-check _bot-ownership _db-ownership _docker-network \
+	_db-prepare _db-deploy _logging-status _docker-ready _docker-diagnostics _docker-clean
 
-docker-run: docker-network
-	@echo "Run docker container..."
+# Explicit recursive -j invocations enforce parallel siblings AND stage barriers,
+# even for plain `make deploy` (not just callers who remember `make -j`).
+_deploy:
+	@$(MAKE) --no-print-directory _deployment-check _compose-check _docker-network
+	@echo 'Step 1: build image / ensure local PostgreSQL / ensure local Grafana stack'
+	@$(MAKE) --no-print-directory -j3 _docker-build _db-bootstrap _logging-up
+	@echo 'Step 2: network / authenticated database / Grafana liveness'
+	@$(MAKE) --no-print-directory -j3 _network-check _db-check _grafana-check
+	@echo 'Step 3: Liquibase migration'
+	@$(MAKE) --no-print-directory _db-migrate
+	@echo 'Step 4: replace bot and verify startup'
+	@$(MAKE) --no-print-directory _bot-replace
 
-	@docker run -d \
-		--restart unless-stopped \
-		--network $(DOCKER_NETWORK) \
-		-e TELEGRAM_BOT_TOKEN \
-		-e DEEPSEEK_API_TOKEN \
-		-e CHATGPT_API_TOKEN \
-		-e OPENAI_API_KEY \
-		-e OPENROUTER_API_KEY \
-		-e OPENROUTER_MODEL \
-		-e AI_MAX_INPUT_CHARS \
-		-e AI_MAX_OUTPUT_TOKENS \
-		-e AI_MAX_CONCURRENT_SUMMARIES \
-		-e GOOGLE_AI_STUDIO_API_KEY \
-		-e GEMINI_API_KEY \
-		-e GOOGLE_API_KEY \
-		-e DEBUG \
-		-e DB_HOST=$(DB_HOST) \
-		-e DB_USER \
-		-e DB_PASSWORD \
-		-e DB_NAME \
-		--name $(DOCKER_CONTAINER) \
-		$(DOCKER_IMAGE):$(IMAGE_VERSION)
-	@$(MAKE) docker-ready
+_compose-check:
+	@$(IMAGE) config --quiet
+	@$(DB) --profile tools config --quiet
+	@$(BOT) config --quiet
+	@if [ "$$GRAFANA_LOCAL" = 1 ]; then $(GRAFANA) config --quiet; fi
 
-# The application emits this marker after DB and Telegram polling probes pass.
-# Container existence alone is not ready.
-docker-ready:
-	@echo "Wait for bot startup (up to $(BOT_STARTUP_TIMEOUT)s)..."
-	@elapsed=0; \
-	while :; do \
-		state=$$(docker inspect -f '{{.State.Status}} {{.RestartCount}}' $(DOCKER_CONTAINER)) || exit 1; \
-		if [ "$$state" != "running 0" ]; then \
-			echo "Bot startup failed: $$state"; \
-			$(MAKE) docker-diagnostics; \
-			exit 1; \
+_deployment-check: _bot-ownership
+	@if [ "$$DB_LOCAL" = 1 ]; then $(MAKE) --no-print-directory _db-ownership; fi
+
+# Compose cannot adopt unmanaged containers. No automatic stop/remove/migration.
+_bot-ownership _db-ownership:
+	@set -eu; docker info >/dev/null; \
+	service=bot; if [ '$@' = _db-ownership ]; then service=postgres; fi; \
+	container=inanny-$$service; \
+	if docker container inspect "$$container" >/dev/null 2>&1; then \
+		owner=$$(docker inspect -f '{{index .Config.Labels "com.docker.compose.project"}}/{{index .Config.Labels "com.docker.compose.service"}}' "$$container"); \
+		if [ "$$owner" != "inanny/$$service" ]; then \
+			echo "Refusing unmanaged $$container; follow docs/deployment.md legacy migration" >&2; exit 1; \
 		fi; \
-		if docker logs --tail 100 $(DOCKER_CONTAINER) 2>&1 | grep -Fq 'Telegram bot Innany startup checks passed'; then \
-			state=$$(docker inspect -f '{{.State.Status}} {{.RestartCount}}' $(DOCKER_CONTAINER)) || exit 1; \
-			[ "$$state" = "running 0" ] || exit 1; \
-			echo "Bot startup confirmed."; \
-			exit 0; \
+	fi
+
+_docker-network:
+	@docker network inspect inanny-network >/dev/null 2>&1 || \
+		docker network create inanny-network >/dev/null || \
+		docker network inspect inanny-network >/dev/null
+
+_docker-build:
+	@set -eu; config=$$($(IMAGE) config --format json); \
+	printf '%s\n' "$$config" | docker buildx bake -f - --load bot
+
+_db-bootstrap:
+	@if [ "$$DB_LOCAL" = 1 ]; then \
+		$(MAKE) --no-print-directory _db-ownership _docker-network && \
+		(docker volume inspect inanny-postgres-data >/dev/null 2>&1 || docker volume create inanny-postgres-data >/dev/null) && \
+		$(DB) up -d --no-deps --no-recreate postgres; \
+	else echo 'External DB_URL: no local PostgreSQL changes'; fi
+
+_logging-up:
+	@if [ "$$GRAFANA_LOCAL" = 1 ]; then \
+		$(MAKE) --no-print-directory _docker-network && \
+		$(GRAFANA) up -d --no-recreate; \
+	else echo 'External GRAFANA_URL: entire logging stack remains remote'; fi
+
+_network-check:
+	@docker network inspect inanny-network >/dev/null
+
+_db-check:
+	@$(DB) run --rm --no-deps db-check
+
+# curl runs on the same network as the bot, not on the operator's laptop.
+# Bearer credentials are passed via env, never expanded into host command argv.
+_grafana-check:
+	@docker run --rm --network inanny-network \
+		-e GRAFANA_HEALTH_URL -e GRAFANA_HEALTH_TOKEN -e GRAFANA_LOCAL \
+		--entrypoint sh curlimages/curl:8.12.1 -ec '\
+		probe() { code=$$(curl --silent --show-error --fail --connect-timeout 5 --max-time 10 --retry 12 --retry-delay 2 --retry-all-errors --output /tmp/health --write-out "%{http_code}" "$$@"); test "$$code" = 200; }; \
+		if [ -n "$${GRAFANA_HEALTH_TOKEN:-}" ]; then \
+			probe -H "Authorization: Bearer $$GRAFANA_HEALTH_TOKEN" "$$GRAFANA_HEALTH_URL"; \
+		else probe "$$GRAFANA_HEALTH_URL"; fi; \
+		grep -Eq '\''"database"[[:space:]]*:[[:space:]]*"ok"'\'' /tmp/health; \
+		if [ "$$GRAFANA_LOCAL" = 1 ]; then probe http://loki:3100/ready; probe http://alloy:12345/-/ready; fi'
+
+_db-migrate:
+	@$(DB) run --rm --no-deps migrate
+
+_bot-replace:
+	@$(BOT) up -d --no-deps --no-build --pull never --force-recreate bot
+	@$(MAKE) --no-print-directory _docker-ready
+
+_db-prepare:
+	@$(MAKE) --no-print-directory _db-bootstrap _docker-network
+	@$(MAKE) --no-print-directory _db-check
+_db-deploy:
+	@$(MAKE) --no-print-directory _db-prepare
+	@$(MAKE) --no-print-directory _db-migrate
+_logging-status:
+	@if [ "$$GRAFANA_LOCAL" = 1 ]; then $(GRAFANA) ps; else echo "Grafana stack is externally managed"; fi
+
+_docker-ready:
+	@set -eu; case '$(BOT_STARTUP_TIMEOUT)' in ''|*[!0-9]*) echo 'Invalid BOT_STARTUP_TIMEOUT' >&2; exit 1;; esac; \
+	elapsed=0; while :; do \
+		state=$$(docker inspect -f '{{.State.Status}} {{.RestartCount}}' inanny-bot); \
+		if [ "$$state" != 'running 0' ]; then $(MAKE) --no-print-directory _docker-diagnostics; exit 1; fi; \
+		if docker logs --tail 100 inanny-bot 2>&1 | grep -Fq 'Telegram bot Innany startup checks passed'; then \
+			test "$$(docker inspect -f '{{.State.Status}} {{.RestartCount}}' inanny-bot)" = 'running 0'; \
+			echo 'Bot startup confirmed'; break; \
 		fi; \
-		if [ $$elapsed -ge $(BOT_STARTUP_TIMEOUT) ]; then \
-			echo "Bot did not become ready after $(BOT_STARTUP_TIMEOUT)s."; \
-			$(MAKE) docker-diagnostics; \
-			exit 1; \
-		fi; \
-		sleep 1; \
-		elapsed=$$((elapsed + 1)); \
+		if [ "$$elapsed" -ge '$(BOT_STARTUP_TIMEOUT)' ]; then $(MAKE) --no-print-directory _docker-diagnostics; exit 1; fi; \
+		sleep 1; elapsed=$$((elapsed+1)); \
 	done
 
-# Never dump Config.Env: it contains database credentials and API tokens.
-docker-diagnostics:
-	@for container in $(DB_CONTAINER) $(DOCKER_CONTAINER); do \
-		echo "Container: $$container"; \
-		docker inspect -f 'State={{.State.Status}} ExitCode={{.State.ExitCode}} Restarts={{.RestartCount}} Mounts={{json .Mounts}} Networks={{json .NetworkSettings.Networks}}' $$container || true; \
-		docker logs --tail 200 --since 10m $$container || true; \
+_docker-diagnostics:
+	@for container in inanny-postgres inanny-bot; do \
+		docker inspect -f 'State={{.State.Status}} ExitCode={{.State.ExitCode}} Restarts={{.RestartCount}} Mounts={{json .Mounts}} Networks={{json .NetworkSettings.Networks}}' "$$container" || true; \
+		docker logs --tail 200 --since 10m "$$container" || true; \
 	done
 
-docker-bar: docker-build docker-clean docker-run
-	
-db-migrate: docker-network
-	@LIQUIBASE_COMMAND_URL="jdbc:postgresql://$(DB_CONTAINER):5432/$(DB_NAME)" \
-	LIQUIBASE_COMMAND_USERNAME="$(DB_USER)" \
-	LIQUIBASE_COMMAND_PASSWORD="$(DB_PASSWORD)" \
-	docker run --rm \
-		--network "$(DOCKER_NETWORK)" \
-		--mount type=bind,src="$(CURDIR)/migrate",dst=/liquibase/changelog,readonly \
-		-e LIQUIBASE_COMMAND_URL \
-		-e LIQUIBASE_COMMAND_USERNAME \
-		-e LIQUIBASE_COMMAND_PASSWORD \
-		$(LIQUIBASE_IMAGE) \
-		--search-path=/liquibase/changelog \
-		--changelog-file=changelog.xml update
-
-deploy:
-	$(MAKE) docker-build
-	$(MAKE) db-bootstrap
-	$(MAKE) db-migrate
-	$(MAKE) docker-clean
-	$(MAKE) docker-run
+_docker-clean: _bot-ownership
+	@$(BOT) rm -s -f bot

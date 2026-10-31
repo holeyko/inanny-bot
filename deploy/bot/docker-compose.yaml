@@ -1,0 +1,39 @@
+# Keep the existing project/service labels when splitting the runtime files.
+name: inanny
+
+services:
+  bot:
+    image: inanny-bot:${IMAGE_VERSION:-latest}
+    container_name: inanny-bot
+    restart: unless-stopped
+    environment:
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      DB_HOST: ${DB_HOST:?Use make deploy to resolve DB_URL}
+      DB_USER: ${DB_USER:?Set DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD}
+      DB_NAME: ${DB_NAME:?Set DB_NAME}
+      DEEPSEEK_API_TOKEN: ${DEEPSEEK_API_TOKEN:-}
+      CHATGPT_API_TOKEN: ${CHATGPT_API_TOKEN:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-}
+      AI_MAX_INPUT_CHARS: ${AI_MAX_INPUT_CHARS:-}
+      AI_MAX_OUTPUT_TOKENS: ${AI_MAX_OUTPUT_TOKENS:-}
+      AI_MAX_CONCURRENT_SUMMARIES: ${AI_MAX_CONCURRENT_SUMMARIES:-}
+      GOOGLE_AI_STUDIO_API_KEY: ${GOOGLE_AI_STUDIO_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+      DEBUG: ${DEBUG:-false}
+    networks: [inanny]
+    volumes:
+      - ${DB_TLS_DIR:-../../local/db-tls}:/run/db-tls:ro
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  inanny:
+    external: true
+    name: inanny-network
