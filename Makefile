@@ -48,8 +48,11 @@ logging-status:
 	@$(CONFIG) grafana $(MAKE) --no-print-directory _logging-status
 deployment-check:
 	@$(CONFIG) all $(MAKE) --no-print-directory _deployment-check
-docker-network docker-ready docker-diagnostics:
+docker-network docker-ready:
 	@$(CONFIG) build $(MAKE) --no-print-directory _$@
+# Failure diagnostics must work even when Compose/configuration setup failed.
+docker-diagnostics:
+	@$(MAKE) --no-print-directory _docker-diagnostics
 docker-clean:
 	@$(CONFIG) all $(MAKE) --no-print-directory _docker-clean
 
